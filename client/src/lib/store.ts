@@ -1,27 +1,62 @@
 import { create } from 'zustand';
-import type { MomentWithPhotos } from '../types';
-import type { User } from '@supabase/supabase-js';
+import type { MomentWithPhotos, Mood } from '../types';
+
+export const AURA_COLOR: Record<Mood, string> = {
+  great: '#2EEA99',
+  good: '#FF8A4C',
+  neutral: '#8A9BB4',
+  low: '#8D7B99',
+  rough: '#E03131',
+};
+
+const DEFAULT_AURA = '#8A9BB4';
+
+function getAuraFromMoments(moments: MomentWithPhotos[]): string {
+  const lastMoment = moments[moments.length - 1];
+  const mood = lastMoment?.mood ?? null;
+  return mood ? AURA_COLOR[mood] : DEFAULT_AURA;
+}
 
 interface AppState {
-  user: User | null;
-  setUser: (user: User | null) => void;
-
+  userId: string | null;
+  displayName: string | null;
+  setUser: (id: string, name: string) => void;
+  clearUser: () => void;
   todayMoments: MomentWithPhotos[];
   setTodayMoments: (moments: MomentWithPhotos[]) => void;
   addMoment: (moment: MomentWithPhotos) => void;
   removeMoment: (id: string) => void;
+  currentAura: string;
+  updateAura: (moments: MomentWithPhotos[]) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
-  user: null,
-  setUser: (user) => set({ user }),
-
+  userId: null,
+  displayName: null,
+  setUser: (id, name) => set({ userId: id, displayName: name }),
+  clearUser: () => set({ userId: null, displayName: null }),
   todayMoments: [],
-  setTodayMoments: (moments) => set({ todayMoments: moments }),
+  setTodayMoments: (moments) =>
+    set({
+      todayMoments: moments,
+      currentAura: getAuraFromMoments(moments),
+    }),
   addMoment: (moment) =>
-    set((state) => ({ todayMoments: [...state.todayMoments, moment] })),
+    set((state) => {
+      const updated = [...state.todayMoments, moment];
+      return {
+        todayMoments: updated,
+        currentAura: getAuraFromMoments(updated),
+      };
+    }),
   removeMoment: (id) =>
-    set((state) => ({
-      todayMoments: state.todayMoments.filter((m) => m.id !== id),
-    })),
+    set((state) => {
+      const updated = state.todayMoments.filter((moment) => moment.id !== id);
+      return {
+        todayMoments: updated,
+        currentAura: getAuraFromMoments(updated),
+      };
+    }),
+  currentAura: DEFAULT_AURA,
+  updateAura: (moments) => set({ currentAura: getAuraFromMoments(moments) }),
 }));

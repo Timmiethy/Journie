@@ -1,44 +1,76 @@
-import type { Config } from 'tailwindcss';
+import type { Config } from 'tailwindcss'
 
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
-        cream: {
-          50: '#FAF8F5',
-          100: '#F5F0EB',
-          200: '#E8E0D8',
-          300: '#C4B8AC',
+        abyss: {
+          900: '#050505',
+          800: '#0A0A0A',
+          700: '#141414',
+          600: '#262626',
         },
-        ink: {
-          900: '#2C2825',
-          700: '#5C554D',
-          500: '#8A8078',
+        film: {
+          900: '#F5F5F5',
+          700: '#A3A3A3',
+          500: '#525252',
         },
-        accent: {
-          400: '#C8956C',
-          300: '#D4A574',
-          200: '#E8C9A8',
-        },
-        mood: {
-          great: '#A8C5A0',
-          good: '#D4B8D4',
-          neutral: '#B4C8E0',
-          low: '#E0D4B8',
-          rough: '#E8B4B4',
+        aura: {
+          great:   '#2EEA99',
+          good:    '#FF8A4C',
+          neutral: '#8A9BB4',
+          low:     '#8D7B99',
+          rough:   '#E03131',
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        serif: ['Lora', 'Merriweather', 'Georgia', 'serif'],
+        sans:  ['Satoshi', 'system-ui', 'sans-serif'],
+        serif: ['Newsreader', 'Georgia', 'serif'],
       },
-      borderRadius: {
-        card: '14px',
-        button: '12px',
-        pill: '9999px',
+      keyframes: {
+        'fade-in-up': {
+          '0%':   { opacity: '0', transform: 'translateY(8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'line-reveal': {
+          '0%':   { opacity: '0', transform: 'translateY(4px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'pulse-glow': {
+          '0%, 100%': { opacity: '0.7' },
+          '50%':      { opacity: '1' },
+        },
+        'aura-shift': {
+          '0%':   { opacity: '0.15' },
+          '50%':  { opacity: '0.25' },
+          '100%': { opacity: '0.15' },
+        },
+        'cursor-blink': {
+          '0%, 100%': { opacity: '1' },
+          '50%':      { opacity: '0' },
+        },
+        'flash': {
+          '0%':   { opacity: '0' },
+          '15%':  { opacity: '0.9' },
+          '100%': { opacity: '0' },
+        },
+      },
+      animation: {
+        'fade-in-up':  'fade-in-up 0.4s ease-out forwards',
+        'line-reveal': 'line-reveal 0.5s ease-out forwards',
+        'pulse-glow':  'pulse-glow 2s ease-in-out infinite',
+        'aura-shift':  'aura-shift 4s ease-in-out infinite',
+        'cursor-blink':'cursor-blink 1s step-end infinite',
+        'flash':       'flash 0.6s ease-out forwards',
+      },
+      boxShadow: {
+        'glow': '0 0 40px -10px var(--tw-shadow-color)',
+      },
+      blur: {
+        '120': '120px',
       },
     },
   },
   plugins: [],
-} satisfies Config;
+} satisfies Config

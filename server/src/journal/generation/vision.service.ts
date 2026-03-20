@@ -7,29 +7,38 @@ export class VisionService {
   constructor(private openaiService: OpenaiService) {}
 
   async describePhotos(photoUrls: string[]): Promise<string> {
-    if (photoUrls.length === 0) return 'No photos provided.';
+    if (photoUrls.length === 0) {
+      return 'No photos provided.';
+    }
 
     const openai = this.openaiService.getClient();
+    if (!openai) {
+      return `${photoUrls.length} photo${photoUrls.length === 1 ? '' : 's'} captured for this moment.`;
+    }
 
     const imageContents = photoUrls.map((url) => ({
       type: 'image_url' as const,
       image_url: { url, detail: 'low' as const },
     }));
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: PHOTO_VISION_PROMPT },
-            ...imageContents,
-          ],
-        },
-      ],
-      max_tokens: 500,
-    });
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: PHOTO_VISION_PROMPT },
+              ...imageContents,
+            ],
+          },
+        ],
+        max_tokens: 500,
+      });
 
-    return response.choices[0]?.message?.content ?? '';
+      return response.choices[0]?.message?.content ?? '';
+    } catch {
+      return `${photoUrls.length} photo${photoUrls.length === 1 ? '' : 's'} captured for this moment.`;
+    }
   }
 }

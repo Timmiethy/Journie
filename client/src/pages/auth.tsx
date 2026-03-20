@@ -1,14 +1,131 @@
-export default function AuthPage() {
+import { useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { useStore } from '../lib/store';
+import { api } from '../lib/api';
+import { AuraShell } from '../components/layout/AuraShell';
+
+type Mode = 'login' | 'signup';
+
+export function AuthPage() {
+  const navigate = useNavigate();
+  const setUser = useStore((s) => s.setUser);
+
+  const [mode, setMode] = useState<Mode>('signup');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const { data, error: authError } =
+        mode === 'signup'
+          ? await supabase.auth.signUp({ email, password })
+          : await supabase.auth.signInWithPassword({ email, password });
+
+      if (authError) {
+        setError(authError.message);
+        setLoading(false);
+        return;
+      }
+
+      const user = data?.user ?? data?.session?.user;
+      if (!user) {
+        setError('something went wrong. try again.');
+        setLoading(false);
+        return;
+      }
+
+      setUser(
+        user.id,
+        user.user_metadata?.display_name ?? user.email ?? 'User'
+      );
+
+      const persona = await api.persona.get();
+      navigate(persona ? '/home' : '/onboarding', { replace: true });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'something went wrong. try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-cream-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-[480px] text-center">
-        <h1 className="font-sans text-[17px] font-medium text-ink-900 mb-2">journie</h1>
-        <p className="font-sans text-[13px] text-ink-500 mb-8">
-          Your day, your journal, zero writing.
-        </p>
-        {/* TODO: Auth form */}
-        <p className="text-ink-500 text-[13px]">Auth form coming soon</p>
+    <AuraShell>
+      <div className="flex min-h-screen items-center justify-center px-6">
+        <div className="w-full max-w-xs">
+          {/* Brand */}
+          <h1 className="font-serif text-4xl font-medium text-film-900 tracking-tight text-center mb-2">
+            journie
+          </h1>
+          <p className="font-sans text-sm text-film-700 tracking-[0.15em] uppercase text-center mb-12">
+            your day, written for you
+          </p>
+
+          {/* Divider */}
+          <div className="w-12 h-px bg-abyss-600 mx-auto mb-12" />
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="email"
+              required
+              autoComplete="email"
+              className="w-full bg-transparent border-b border-abyss-600 py-3 text-film-900 font-sans text-base placeholder:text-film-500 focus:outline-none focus:border-film-700 transition-colors duration-200"
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="password"
+              required
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              minLength={6}
+              className="w-full bg-transparent border-b border-abyss-600 py-3 text-film-900 font-sans text-base placeholder:text-film-500 focus:outline-none focus:border-film-700 transition-colors duration-200"
+            />
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-film-900 text-abyss-900 font-sans font-bold text-sm uppercase tracking-widest py-4 rounded-none hover:bg-film-700 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? '...' : mode === 'signup' ? 'sign up' : 'log in'}
+            </button>
+          </form>
+
+          {/* Error */}
+          {error && (
+            <p className="font-sans text-sm text-aura-rough mt-3 text-center">
+              {error}
+            </p>
+          )}
+
+          {/* Toggle */}
+          <div className="mt-8 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setMode(mode === 'signup' ? 'login' : 'signup');
+                setError(null);
+              }}
+              className="font-sans text-sm text-film-700 hover:text-film-900 transition-colors duration-200 underline underline-offset-4"
+            >
+              {mode === 'signup'
+                ? 'already have an account? log in'
+                : 'new here? sign up'}
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+    </AuraShell>
   );
 }
+

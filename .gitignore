@@ -28,3 +28,9 @@ server/dist/
 
 # Supabase local
 .supabase/
+
+# Password
+.pass
+
+# AI Artifacts
+tasks/*

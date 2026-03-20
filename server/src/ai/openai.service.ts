@@ -4,15 +4,20 @@ import OpenAI from 'openai';
 
 @Injectable()
 export class OpenaiService {
-  private client: OpenAI;
+  private client: OpenAI | null = null;
 
   constructor(private configService: ConfigService) {
-    this.client = new OpenAI({
-      apiKey: this.configService.getOrThrow<string>('OPENAI_API_KEY'),
-    });
+    const apiKey = this.configService.get<string>('OPENAI_API_KEY');
+    if (apiKey) {
+      this.client = new OpenAI({ apiKey });
+    }
   }
 
-  getClient(): OpenAI {
+  isConfigured(): boolean {
+    return this.client !== null;
+  }
+
+  getClient(): OpenAI | null {
     return this.client;
   }
 }
