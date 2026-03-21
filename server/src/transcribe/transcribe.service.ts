@@ -14,18 +14,10 @@ export class TranscribeService {
 
     try {
       const openai = this.openaiService.getClientOrThrow();
+      const transcript = this.usesDashScopeAsr()
+        ? await this.transcribeWithDashScopeChatCompletions(file, openai)
+        : await this.transcribeWithAudioApi(file, openai);
 
-      const audioBytes = new Uint8Array(file.buffer);
-      const audioFile = new File([audioBytes], file.originalname || 'voice-note.webm', {
-        type: file.mimetype || 'audio/webm',
-      });
-
-      const transcription = await openai.audio.transcriptions.create({
-        file: audioFile,
-        model: 'whisper-1',
-      });
-
-      const transcript = transcription.text?.trim();
       if (transcript) {
         return { transcript };
       }
@@ -37,5 +29,59 @@ export class TranscribeService {
     }
 
     throw new InternalServerErrorException({ error: 'Transcription failed' });
+  }
+
+  private async transcribeWithAudioApi(file: Express.Multer.File, openai: ReturnType<OpenaiService['getClientOrThrow']>) {
+    const audioBytes = new Uint8Array(file.buffer);
+    const audioFile = new File([audioBytes], file.originalname || 'voice-note.webm', {
+      type: file.mimetype || 'audio/webm',
+    });
+
+    const transcription = await openai.audio.transcriptions.create({
+      file: audioFile,
+      model: this.openaiService.getTranscriptionModel(),
+    });
+
+    return transcription.text?.trim() ?? '';
+  }
+
+  private async transcribeWithDashScopeChatCompletions(
+    file: Express.Multer.File,
+    openai: ReturnType<OpenaiService['getClientOrThrow']>,
+  ) {
+    const mimeType = file.mimetype || 'audio/webm';
+    const dataUri = `data:${mimeType};base64,${file.buffer.toString('base64')}`;
+    const model = this.openaiService.getTranscriptionModel();
+    const messages = [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'input_audio',
+            input_audio: {
+              data: dataUri,
+            },
+          },
+        ],
+      },
+    ] as unknown as Array<Record<string, unknown>>;
+    const requestBody = {
+      model,
+      messages: messages as never,
+      ...this.openaiService.getChatCompletionProviderOptions(model),
+      extra_body: {
+        ...this.openaiService.getChatCompletionProviderOptions(model).extra_body,
+        asr_options: {
+          enable_itn: false,
+        },
+      },
+    } as never;
+    const completion = await openai.chat.completions.create(requestBody);
+
+    return completion.choices[0]?.message?.content?.trim() ?? '';
+  }
+
+  private usesDashScopeAsr(): boolean {
+    return this.openaiService.getTranscriptionModel().toLowerCase().startsWith('qwen3-asr-');
   }
 }

@@ -24,10 +24,7 @@ function readEnvFile(filePath: string): Record<string, string> {
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const serverEnv = readEnvFile(path.resolve(testDirectory, '../../server/.env'));
-const pngBuffer = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9pRyxu8AAAAASUVORK5CYII=',
-  'base64',
-);
+const smokeImagePath = path.resolve(testDirectory, './fixtures/smoke-moment.png');
 const generationFailureText = 'Generation failed — tap Regenerate to try again.';
 
 test.setTimeout(120000);
@@ -97,7 +94,7 @@ test('journie smoke flow renders and navigates core pages', async ({ page }) => 
 
   await page
     .locator('input[type="file"][multiple]')
-    .setInputFiles({ name: 'moment.png', mimeType: 'image/png', buffer: pngBuffer });
+    .setInputFiles(smokeImagePath);
   await page.waitForURL('**/moments/new');
 
   await page.getByRole('button', { name: /^next$/i }).click();

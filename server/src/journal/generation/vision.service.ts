@@ -21,8 +21,10 @@ export class VisionService {
     }));
 
     try {
+      const startedAt = Date.now();
+      const model = this.openaiService.getVisionModel();
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
+        model,
         messages: [
           {
             role: 'user',
@@ -32,8 +34,12 @@ export class VisionService {
             ],
           },
         ],
-        max_tokens: 500,
+        max_tokens: 180,
+        ...this.openaiService.getChatCompletionProviderOptions(model),
       });
+      this.logger.log(
+        `Vision described ${photoUrls.length} photo(s) in ${Date.now() - startedAt}ms using ${model}`,
+      );
 
       return response.choices[0]?.message?.content ?? '';
     } catch (error) {

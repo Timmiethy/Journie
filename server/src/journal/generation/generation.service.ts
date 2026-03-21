@@ -116,7 +116,12 @@ export class GenerationService {
   }
 
   private async runGenerationPipeline(userId: string, date: string, regenerate: boolean) {
+    const pipelineStartedAt = Date.now();
+
     try {
+      this.logger.log(`Starting journal generation pipeline for user ${userId}, date ${date}`);
+
+      const bootstrapStartedAt = Date.now();
       const [persona, moments, recentJournals, voiceProfile, editDiffs] = await Promise.all([
         this.personaService.findByUserId(userId),
         this.momentsService.findByDate(userId, date),
@@ -124,11 +129,15 @@ export class GenerationService {
         this.voiceProfileService.getProfile(userId),
         this.voiceProfileService.getRecentEditDiffs(userId),
       ]);
+      this.logger.log(
+        `Loaded generation inputs for user ${userId}, date ${date} in ${Date.now() - bootstrapStartedAt}ms`,
+      );
 
       if (!persona) {
         throw new BadRequestException({ error: 'Persona not found' });
       }
 
+      const visionStartedAt = Date.now();
       const describedMoments = await Promise.all(
         (moments as MomentLike[]).map(async (moment, index) => ({
           index,
@@ -139,6 +148,9 @@ export class GenerationService {
           ),
           notes: this.combineNotes(moment),
         })),
+      );
+      this.logger.log(
+        `Analyzed ${describedMoments.length} moment(s) for user ${userId}, date ${date} in ${Date.now() - visionStartedAt}ms`,
       );
 
       const systemPrompt = buildSystemPrompt(
@@ -153,22 +165,35 @@ export class GenerationService {
       );
 
       const openai = this.openaiService.getClientOrThrow();
+      const model = this.openaiService.getChatModel();
+      const completionStartedAt = Date.now();
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o',
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },
         ],
         temperature: 0.8,
-        max_tokens: 1500,
+        max_tokens: 700,
+        ...this.openaiService.getChatCompletionProviderOptions(model),
       });
+      this.logger.log(
+        `Generated journal text for user ${userId}, date ${date} in ${Date.now() - completionStartedAt}ms`,
+      );
 
       const content = completion.choices[0]?.message?.content?.trim();
       if (!content) {
         throw new InternalServerErrorException({ error: 'Journal generation failed' });
       }
 
+      const persistStartedAt = Date.now();
       await this.updateGeneratedJournal(userId, date, content, regenerate);
+      this.logger.log(
+        `Persisted generated journal for user ${userId}, date ${date} in ${Date.now() - persistStartedAt}ms`,
+      );
+      this.logger.log(
+        `Completed journal generation pipeline for user ${userId}, date ${date} in ${Date.now() - pipelineStartedAt}ms`,
+      );
 
       // Trigger voice profile refresh check (non-blocking)
       this.voiceProfileService.maybeRefreshProfile(userId);

@@ -18,6 +18,12 @@ interface EditDiff {
   day_date: string;
 }
 
+interface ParsedVoiceProfile {
+  voice_summary: string;
+  preferred_phrases: string[];
+  avoided_phrases: string[];
+}
+
 const REFRESH_EVERY_N_JOURNALS = 5;
 
 function getErrorMessage(error: unknown): string {
@@ -179,14 +185,16 @@ export class VoiceProfileService {
       return;
     }
 
+    const model = this.openaiService.getDistillationModel();
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model,
       messages: [
         { role: 'system', content: 'You analyze journal entries to extract a writer\'s unique voice profile. Respond ONLY with valid JSON, no markdown fences.' },
         { role: 'user', content: distillationPrompt },
       ],
       temperature: 0.3,
       max_tokens: 1000,
+      ...this.openaiService.getChatCompletionProviderOptions(model),
     });
 
     const raw = response.choices[0]?.message?.content?.trim();
@@ -195,10 +203,8 @@ export class VoiceProfileService {
       return;
     }
 
-    let parsed: { voice_summary: string; preferred_phrases: string[]; avoided_phrases: string[] };
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
+    const parsed = this.parseVoiceProfileResponse(raw);
+    if (!parsed) {
       this.logger.error(`Failed to parse distillation response for user ${userId}: ${raw.slice(0, 200)}`);
       return;
     }
@@ -292,6 +298,37 @@ export class VoiceProfileService {
     }
 
     return parts.join('\n');
+  }
+
+  private parseVoiceProfileResponse(raw: string): ParsedVoiceProfile | null {
+    const candidates = [raw, this.stripMarkdownCodeFence(raw), this.extractFirstJsonObject(raw)].filter(
+      (value): value is string => Boolean(value),
+    );
+
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate) as ParsedVoiceProfile;
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  private stripMarkdownCodeFence(raw: string): string | null {
+    const match = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    return match?.[1]?.trim() || null;
+  }
+
+  private extractFirstJsonObject(raw: string): string | null {
+    const start = raw.indexOf('{');
+    const end = raw.lastIndexOf('}');
+    if (start === -1 || end === -1 || end <= start) {
+      return null;
+    }
+
+    return raw.slice(start, end + 1).trim();
   }
 
   private buildDistillationPrompt(
