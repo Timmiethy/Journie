@@ -50,28 +50,39 @@ export function JournalHistoryPage() {
       current.includes(monthKey) ? current : [...current, monthKey]
     ));
 
-    const requestPromise = api.journal.list({
-        status: 'confirmed',
-        from: format(startOfMonth(month), 'yyyy-MM-dd'),
-        to: format(endOfMonth(month), 'yyyy-MM-dd'),
-        limit: 200,
-      })
-      .then((result) => {
-        entriesByMonthRef.current[monthKey] = result;
-        setEntriesByMonth((current) => ({
-          ...current,
-          [monthKey]: result,
-        }));
-        return result;
-      })
-      .catch((error: unknown) => {
-        toast.error(error instanceof Error ? error.message : 'failed to load journals');
-        return [];
-      })
-      .finally(() => {
-        delete inFlightMonthsRef.current[monthKey];
-        setLoadingKeys((current) => current.filter((key) => key !== monthKey));
-      });
+    const requestPromise = (async () => {
+      let lastError: unknown = null;
+
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          const result = await api.journal.list({
+            status: 'confirmed',
+            from: format(startOfMonth(month), 'yyyy-MM-dd'),
+            to: format(endOfMonth(month), 'yyyy-MM-dd'),
+            limit: 200,
+          });
+
+          entriesByMonthRef.current[monthKey] = result;
+          setEntriesByMonth((current) => ({
+            ...current,
+            [monthKey]: result,
+          }));
+          return result;
+        } catch (error: unknown) {
+          lastError = error;
+
+          if (attempt < 3) {
+            await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+          }
+        }
+      }
+
+      toast.error(lastError instanceof Error ? lastError.message : 'failed to load journals');
+      return [];
+    })().finally(() => {
+      delete inFlightMonthsRef.current[monthKey];
+      setLoadingKeys((current) => current.filter((key) => key !== monthKey));
+    });
 
     inFlightMonthsRef.current[monthKey] = requestPromise;
     return requestPromise;

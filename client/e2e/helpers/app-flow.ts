@@ -129,32 +129,56 @@ export async function loginToHome(page: Page, email: string, password: string) {
 }
 
 export async function seedPersona(request: APIRequestContext, userId: string) {
+  const headers = {
+    apikey: serverEnv.SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${serverEnv.SUPABASE_SERVICE_ROLE_KEY}`,
+    'Content-Type': 'application/json',
+    Prefer: 'return=representation',
+  };
+
   const response = await request.post(
     `${serverEnv.SUPABASE_URL}/rest/v1/personas`,
     {
-      headers: {
-        apikey: serverEnv.SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${serverEnv.SUPABASE_SERVICE_ROLE_KEY}`,
-        'Content-Type': 'application/json',
-        Prefer: 'return=representation',
-      },
+      headers,
       data: {
         user_id: userId,
-        writing_style: 'casual',
-        journal_topics: ['emotions'],
-        narrative_voice: 'first_person',
-        emotional_depth: 'moderate',
-        personality_tags: ['creative', 'optimist'],
-        mbti: 'INTJ',
-        occupation: 'student',
+        attention_filter: 'aesthetics',
+        life_chapter: 'building',
+        tone_preset: 'poetic',
         daily_people: ['mostly-solo'],
-        daily_activities: ['work-school'],
         additional_context: 'Motion validation seed persona.',
       },
     },
   );
 
   expect(response.ok()).toBeTruthy();
+
+  let lastResponseText = '';
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const personaResponse = await request.get(
+      `${serverEnv.SUPABASE_URL}/rest/v1/personas?user_id=eq.${userId}&select=id`,
+      {
+        headers: {
+          apikey: serverEnv.SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${serverEnv.SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+      },
+    );
+
+    lastResponseText = await personaResponse.text();
+
+    if (personaResponse.ok()) {
+      const rows = JSON.parse(lastResponseText) as Array<{ id: string }>;
+      if (rows.length > 0) {
+        return;
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  throw new Error(`Timed out waiting for seeded persona visibility for ${userId}: ${lastResponseText}`);
 }
 
 export function localTodayISO(date = new Date()) {
@@ -170,3 +194,4 @@ export async function browserTodayISO(page: Page) {
     return `${year}-${month}-${day}`;
   });
 }
+

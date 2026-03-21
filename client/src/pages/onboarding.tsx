@@ -7,84 +7,47 @@ import { AuraShell } from '../components/layout/AuraShell';
 import { ActionButton, TextButton } from '../components/ui/action-button';
 import { spring, tapMotionProps, withReducedMotion } from '../lib/motion';
 import { usePrefersReducedMotion } from '../lib/use-prefers-reduced-motion';
-import type {
-  WritingStyle,
-  JournalTopic,
-  NarrativeVoice,
-  EmotionalDepth,
-  PersonalityTag,
-  MBTIType,
-  Occupation,
-  DailyPerson,
-  DailyActivity,
-} from '../types';
+import type { AttentionFilter, LifeChapter, TonePreset, DailyPerson } from '../types';
 
 // ─── Constants ───
 
-const TOTAL_STEPS = 11;
+const TOTAL_STEPS = 5;
 
-const WRITING_SAMPLES: Record<WritingStyle, string> = {
-  poetic: 'The morning light whispered through the curtains...',
-  casual: 'Grabbed coffee, hit the gym, pretty solid morning.',
-  reflective: 'I noticed something shift in me today...',
-  witty: 'Survived another Monday. Barely. The coffee deserves a medal.',
-};
-
-const STYLE_PREVIEWS: Record<WritingStyle, Record<NarrativeVoice, string>> = {
-  poetic: {
-    first_person:
-      'I moved through the day like it was stitched together by little glints of light, each moment leaving a trace I wanted to keep.',
-    second_person:
-      'You moved through the day like it was stitched together by little glints of light, each moment leaving a trace you wanted to keep.',
-    third_person:
-      'They moved through the day like it was stitched together by little glints of light, each moment leaving a trace they wanted to keep.',
+const ATTENTION_OPTIONS: { label: string; description: string; value: AttentionFilter }[] = [
+  {
+    label: 'Unhinged memes & random screenshots',
+    description: 'Digital chaos, humor, and internet culture',
+    value: 'memes',
   },
-  casual: {
-    first_person:
-      'I had one of those days that only made sense once I looked back at it. Nothing huge, just a bunch of small things that somehow landed right.',
-    second_person:
-      'You had one of those days that only made sense once you looked back at it. Nothing huge, just a bunch of small things that somehow landed right.',
-    third_person:
-      'They had one of those days that only made sense once they looked back at it. Nothing huge, just a bunch of small things that somehow landed right.',
+  {
+    label: 'Blurry nights & people I love',
+    description: 'Candid moments with the people who matter',
+    value: 'people',
   },
-  reflective: {
-    first_person:
-      'I kept circling the same thought all day: maybe meaning lives in the details I almost miss. The more I paid attention, the more the day opened up.',
-    second_person:
-      'You kept circling the same thought all day: maybe meaning lives in the details you almost miss. The more you paid attention, the more the day opened up.',
-    third_person:
-      'They kept circling the same thought all day: maybe meaning lives in the details they almost miss. The more they paid attention, the more the day opened up.',
+  {
+    label: 'Quiet aesthetics',
+    description: 'Skies, coffee cups, street lamps, textures',
+    value: 'aesthetics',
   },
-  witty: {
-    first_person:
-      'I spent the day pretending I had everything under control, which was brave of me. Somehow the chaos still turned into a story worth keeping.',
-    second_person:
-      'You spent the day pretending you had everything under control, which was brave of you. Somehow the chaos still turned into a story worth keeping.',
-    third_person:
-      'They spent the day pretending they had everything under control, which was brave of them. Somehow the chaos still turned into a story worth keeping.',
+  {
+    label: 'Mostly just me',
+    description: 'Self-portraits, mirror selfies, main character energy',
+    value: 'selfies',
   },
-};
-
-const ALL_MBTI: MBTIType[] = [
-  'INTJ','INTP','ENTJ','ENTP',
-  'INFJ','INFP','ENFJ','ENFP',
-  'ISTJ','ISFJ','ESTJ','ESFJ',
-  'ISTP','ISFP','ESTP','ESFP',
 ];
 
-const PERSONALITY_OPTIONS: { label: string; value: PersonalityTag }[] = [
-  { label: 'Introvert', value: 'introvert' },
-  { label: 'Extrovert', value: 'extrovert' },
-  { label: 'Night owl', value: 'night-owl' },
-  { label: 'Early bird', value: 'early-bird' },
-  { label: 'Coffee lover', value: 'coffee-lover' },
-  { label: 'Foodie', value: 'foodie' },
-  { label: 'Tech nerd', value: 'tech-nerd' },
-  { label: 'Creative', value: 'creative' },
-  { label: 'Adventurous', value: 'adventurous' },
-  { label: 'Homebody', value: 'homebody' },
-  { label: 'Overthinker', value: 'overthinker' },
-  { label: 'Optimist', value: 'optimist' },
+const CHAPTER_OPTIONS: { label: string; value: LifeChapter }[] = [
+  { label: '"Under construction."', value: 'building' },
+  { label: '"Cruising."', value: 'cruising' },
+  { label: '"Chaotic, but we\'re surviving."', value: 'chaos' },
+  { label: '"Waiting for the plot twist."', value: 'waiting' },
+];
+
+const TONE_OPTIONS: { label: string; description: string; value: TonePreset }[] = [
+  { label: 'Make it poetic and deep.', description: 'Romanticizes the mundane', value: 'poetic' },
+  { label: 'Keep it stoic and real.', description: 'Observational, grounded', value: 'stoic' },
+  { label: 'Roast me slightly.', description: 'Highly ironic, Gen-Z humor', value: 'roast' },
+  { label: 'Just hype me up.', description: 'Optimistic, supportive', value: 'hype' },
 ];
 
 const PEOPLE_OPTIONS: { label: string; value: DailyPerson }[] = [
@@ -96,48 +59,52 @@ const PEOPLE_OPTIONS: { label: string; value: DailyPerson }[] = [
   { label: 'Pets', value: 'pets' },
 ];
 
-const ACTIVITY_OPTIONS: { label: string; value: DailyActivity }[] = [
-  { label: 'Work / school', value: 'work-school' },
-  { label: 'Cooking', value: 'cooking' },
-  { label: 'Exercise', value: 'exercise' },
-  { label: 'Reading', value: 'reading' },
-  { label: 'Music / art', value: 'music-art' },
-  { label: 'Gaming', value: 'gaming' },
-  { label: 'Nature', value: 'nature' },
-  { label: 'Café culture', value: 'cafe-culture' },
-  { label: 'Side projects', value: 'side-projects' },
-  { label: 'Travel', value: 'travel' },
-  { label: 'Socializing', value: 'socializing' },
-  { label: 'Self-care', value: 'self-care' },
-];
+const ATTENTION_PREVIEW_LABELS: Record<AttentionFilter, string> = {
+  memes: 'the screenshots, memes, and digital chaos',
+  people: 'the people-heavy, candid moments',
+  aesthetics: 'the quiet objects, textures, and atmosphere',
+  selfies: 'the self-portraits and self-aware snapshots',
+};
+
+const CHAPTER_PREVIEW_LABELS: Record<LifeChapter, string> = {
+  building: 'evidence that I am still building something',
+  cruising: 'proof that steady days can still feel full',
+  chaos: 'a messy chapter I am still surviving',
+  waiting: 'the stillness right before something shifts',
+};
+
+const TONE_PREVIEW_OPENERS: Record<TonePreset, string> = {
+  poetic: 'The journal will romanticize',
+  stoic: 'The journal will notice',
+  roast: 'The journal will lightly roast',
+  hype: 'The journal will celebrate',
+};
 
 // ─── Persona state ───
 
 interface PersonaState {
-  writing_style: WritingStyle | null;
-  journal_topics: JournalTopic[];
-  narrative_voice: NarrativeVoice | null;
-  emotional_depth: EmotionalDepth | null;
-  personality_tags: PersonalityTag[];
-  mbti: MBTIType | null;
-  occupation: Occupation | null;
+  attention_filter: AttentionFilter | null;
+  life_chapter: LifeChapter | null;
+  tone_preset: TonePreset | null;
   daily_people: DailyPerson[];
-  daily_activities: DailyActivity[];
   additional_context: string | null;
 }
 
 const initialPersona: PersonaState = {
-  writing_style: null,
-  journal_topics: [],
-  narrative_voice: null,
-  emotional_depth: null,
-  personality_tags: [],
-  mbti: null,
-  occupation: null,
+  attention_filter: null,
+  life_chapter: null,
+  tone_preset: null,
   daily_people: [],
-  daily_activities: [],
   additional_context: null,
 };
+
+function buildPersonaPreview(persona: PersonaState) {
+  if (!persona.attention_filter || !persona.life_chapter || !persona.tone_preset) {
+    return null;
+  }
+
+  return `${TONE_PREVIEW_OPENERS[persona.tone_preset]} ${ATTENTION_PREVIEW_LABELS[persona.attention_filter]} and frame this chapter as ${CHAPTER_PREVIEW_LABELS[persona.life_chapter]}.`;
+}
 
 // ─── Component ───
 
@@ -168,9 +135,8 @@ export function OnboardingPage() {
 
   // ─── Helpers ───
 
-  function toggleMulti<T>(arr: T[], val: T, max?: number): T[] {
+  function toggleMulti<T>(arr: T[], val: T): T[] {
     if (arr.includes(val)) return arr.filter((v) => v !== val);
-    if (max && arr.length >= max) return arr;
     return [...arr, val];
   }
 
@@ -178,38 +144,27 @@ export function OnboardingPage() {
 
   function canProceed(): boolean {
     switch (step) {
-      case 0: return persona.writing_style !== null;
-      case 1: return persona.journal_topics.length >= 1 && persona.journal_topics.length <= 3;
-      case 2: return persona.narrative_voice !== null;
-      case 3: return persona.emotional_depth !== null;
-      case 4: return persona.personality_tags.length >= 2;
-      case 5: return true; // mbti can be skipped
-      case 6: return persona.occupation !== null;
-      case 7: return persona.daily_people.length >= 1;
-      case 8: return persona.daily_activities.length >= 1;
-      case 9: return true; // context is optional
-      case 10: return true; // confirmation
+      case 0: return persona.attention_filter !== null;
+      case 1: return persona.life_chapter !== null;
+      case 2: return persona.tone_preset !== null;
+      case 3: return persona.daily_people.length >= 1;
+      case 4: return true; // context is optional, this is also the finish step
       default: return false;
     }
   }
 
   // ─── Submit ───
 
-  async function handleFinish() {
+  async function handleFinish(additionalContext: string | null) {
     setSaving(true);
     setError(null);
     try {
       await api.persona.create({
-        writing_style: persona.writing_style,
-        journal_topics: persona.journal_topics,
-        narrative_voice: persona.narrative_voice,
-        emotional_depth: persona.emotional_depth,
-        personality_tags: persona.personality_tags,
-        mbti: persona.mbti,
-        occupation: persona.occupation,
+        attention_filter: persona.attention_filter,
+        life_chapter: persona.life_chapter,
+        tone_preset: persona.tone_preset,
         daily_people: persona.daily_people,
-        daily_activities: persona.daily_activities,
-        additional_context: persona.additional_context,
+        additional_context: additionalContext,
       });
       navigate('/home', { replace: true });
     } catch (err: unknown) {
@@ -221,187 +176,68 @@ export function OnboardingPage() {
     }
   }
 
-  function getPreviewText(): string {
-    const style = persona.writing_style ?? 'reflective';
-    const voice = persona.narrative_voice ?? 'first_person';
-    const base = STYLE_PREVIEWS[style][voice];
-
-    if (!persona.mbti) {
-      return base;
-    }
-
-    return `${base} It has that ${persona.mbti} kind of texture too: a voice shaped by how ${voice === 'first_person' ? 'I' : voice === 'second_person' ? 'you' : 'they'} naturally process the world.`;
-  }
-
   // ─── Step renderers ───
 
   function renderStep(): ReactNode {
+    const personaPreview = buildPersonaPreview(persona);
+
     switch (step) {
+      // Q1: Attention Filter
       case 0:
         return (
-          <StepShell question="how should your journal sound?">
-            {(['poetic', 'casual', 'reflective', 'witty'] as WritingStyle[]).map((s) => (
+          <StepShell question="if we opened your camera roll right now, what takes up the most space?">
+            {ATTENTION_OPTIONS.map((o) => (
               <TextLinkOption
-                key={s}
-                selected={persona.writing_style === s}
-                onClick={() => setPersona((p) => ({ ...p, writing_style: s }))}
+                key={o.value}
+                selected={persona.attention_filter === o.value}
+                onClick={() => setPersona((p) => ({ ...p, attention_filter: o.value }))}
               >
-                <span className="capitalize">{s}</span>
-                <span className="mt-1 block font-sans text-sm italic text-film-500">
-                  {WRITING_SAMPLES[s]}
+                <span className="font-medium">{o.label}</span>
+                <span className="mt-1 block font-sans text-sm text-film-500">
+                  {o.description}
                 </span>
               </TextLinkOption>
             ))}
           </StepShell>
         );
 
+      // Q2: Emotional Anchor / Life Chapter
       case 1:
         return (
-          <StepShell question="what matters to you?">
-            <p className="font-sans text-xs text-film-500 text-center mb-6">pick 1 to 3</p>
-            <PillGroup>
-              {(['emotions', 'events', 'growth', 'relationships', 'ideas', 'gratitude'] as JournalTopic[]).map(
-                (t) => (
-                  <Pill
-                    key={t}
-                    selected={persona.journal_topics.includes(t)}
-                    disabled={false}
-                    onClick={() =>
-                      setPersona((p) => ({
-                        ...p,
-                        journal_topics: toggleMulti(p.journal_topics, t, 3),
-                      }))
-                    }
-                  >
-                    {t}
-                  </Pill>
-                )
-              )}
-            </PillGroup>
+          <StepShell question="how does this chapter of your life feel?">
+            {CHAPTER_OPTIONS.map((o) => (
+              <TextLinkOption
+                key={o.value}
+                selected={persona.life_chapter === o.value}
+                onClick={() => setPersona((p) => ({ ...p, life_chapter: o.value }))}
+              >
+                <span className="font-serif text-lg italic">{o.label}</span>
+              </TextLinkOption>
+            ))}
           </StepShell>
         );
 
+      // Q3: Tone / System Prompt
       case 2:
         return (
-          <StepShell question="how do you talk to yourself?">
-            {([
-              { label: 'First person — I went...', value: 'first_person' as NarrativeVoice },
-              { label: 'Second person — You went...', value: 'second_person' as NarrativeVoice },
-              { label: 'Third person — She went...', value: 'third_person' as NarrativeVoice },
-            ]).map((o) => (
+          <StepShell question="how should the AI sound?">
+            {TONE_OPTIONS.map((o) => (
               <TextLinkOption
                 key={o.value}
-                selected={persona.narrative_voice === o.value}
-                onClick={() => setPersona((p) => ({ ...p, narrative_voice: o.value }))}
+                selected={persona.tone_preset === o.value}
+                onClick={() => setPersona((p) => ({ ...p, tone_preset: o.value }))}
               >
-                {o.label}
+                <span className="font-medium">{o.label}</span>
+                <span className="mt-1 block font-sans text-sm text-film-500">
+                  {o.description}
+                </span>
               </TextLinkOption>
             ))}
           </StepShell>
         );
 
+      // Q4: Daily People (kept)
       case 3:
-        return (
-          <StepShell question="how deep should we go?">
-            {([
-              { label: 'Light — just the highlights', value: 'light' as EmotionalDepth },
-              { label: 'Moderate — some feelings, some facts', value: 'moderate' as EmotionalDepth },
-              { label: 'Deep — I want to actually reflect', value: 'deep' as EmotionalDepth },
-            ]).map((o) => (
-              <TextLinkOption
-                key={o.value}
-                selected={persona.emotional_depth === o.value}
-                onClick={() => setPersona((p) => ({ ...p, emotional_depth: o.value }))}
-              >
-                {o.label}
-              </TextLinkOption>
-            ))}
-          </StepShell>
-        );
-
-      case 4:
-        return (
-          <StepShell question="pick what fits you">
-            <p className="font-sans text-xs text-film-500 text-center mb-6">pick 2 to 4</p>
-            <PillGroup>
-              {PERSONALITY_OPTIONS.map((o) => {
-                const selected = persona.personality_tags.includes(o.value);
-                const atMax = persona.personality_tags.length >= 4 && !selected;
-                return (
-                  <Pill
-                    key={o.value}
-                    selected={selected}
-                    disabled={atMax}
-                    onClick={() =>
-                      setPersona((p) => ({
-                        ...p,
-                        personality_tags: toggleMulti(p.personality_tags, o.value, 4),
-                      }))
-                    }
-                  >
-                    {o.label}
-                  </Pill>
-                );
-              })}
-            </PillGroup>
-          </StepShell>
-        );
-
-      case 5:
-        return (
-          <StepShell question="what's your MBTI type?">
-            <div className="grid grid-cols-4 gap-2 max-w-xs mx-auto">
-              {ALL_MBTI.map((t) => (
-                <m.button
-                  key={t}
-                  type="button"
-                  onClick={() => setPersona((p) => ({ ...p, mbti: p.mbti === t ? null : t }))}
-                    className={`rounded-2xl border py-2.5 text-center font-sans text-sm font-bold transition-[background-color,border-color,color,transform] duration-150 ${
-                    persona.mbti === t
-                      ? 'border-white/14 bg-white/[0.12] text-film-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_38px_rgba(0,0,0,0.28)] backdrop-blur-xl'
-                      : 'border-white/8 bg-white/[0.03] text-film-900 hover:border-white/12 hover:bg-white/[0.06]'
-                  }`}
-                  {...tapMotionProps}
-                >
-                  {t}
-                </m.button>
-              ))}
-            </div>
-            <div className="mt-4 text-center">
-              <TextButton
-              onClick={() => {
-                setPersona((p) => ({ ...p, mbti: null }));
-                next();
-              }}
-              >
-                I don't know / skip
-              </TextButton>
-            </div>
-          </StepShell>
-        );
-
-      case 6:
-        return (
-          <StepShell question="what do you do?">
-            {([
-              { label: 'Student', value: 'student' as Occupation },
-              { label: 'Working professional', value: 'professional' as Occupation },
-              { label: 'Freelancer / creative', value: 'freelancer' as Occupation },
-              { label: 'Between things right now', value: 'between' as Occupation },
-              { label: 'Rather not say', value: 'skip' as Occupation },
-            ]).map((o) => (
-              <TextLinkOption
-                key={o.value}
-                selected={persona.occupation === o.value}
-                onClick={() => setPersona((p) => ({ ...p, occupation: o.value }))}
-              >
-                {o.label}
-              </TextLinkOption>
-            ))}
-          </StepShell>
-        );
-
-      case 7:
         return (
           <StepShell question="who's usually in your day?">
             <PillGroup>
@@ -424,35 +260,8 @@ export function OnboardingPage() {
           </StepShell>
         );
 
-      case 8:
-        return (
-          <StepShell question="what fills your days lately?">
-            <p className="font-sans text-xs text-film-500 text-center mb-6">pick up to 4</p>
-            <PillGroup>
-              {ACTIVITY_OPTIONS.map((o) => {
-                const selected = persona.daily_activities.includes(o.value);
-                const atMax = persona.daily_activities.length >= 4 && !selected;
-                return (
-                  <Pill
-                    key={o.value}
-                    selected={selected}
-                    disabled={atMax}
-                    onClick={() =>
-                      setPersona((p) => ({
-                        ...p,
-                        daily_activities: toggleMulti(p.daily_activities, o.value, 4),
-                      }))
-                    }
-                  >
-                    {o.label}
-                  </Pill>
-                );
-              })}
-            </PillGroup>
-          </StepShell>
-        );
-
-      case 9:
+      // Q5: Additional Context + Preview + Finish
+      case 4:
         return (
           <StepShell question="tell the AI anything else">
             <p className="font-sans text-xs text-film-500 text-center mb-6">
@@ -464,26 +273,16 @@ export function OnboardingPage() {
               placeholder="e.g., I'm Tan, a CS student who lives on cà phê sữa đá..."
               className="min-h-[120px] w-full resize-none rounded-[22px] border border-abyss-700 bg-abyss-900/60 px-4 py-4 font-sans text-base text-film-900 placeholder:text-film-500 transition-colors duration-200 focus:border-film-700 focus:outline-none"
             />
-            <div className="mt-4 text-center">
-              <TextButton
-              onClick={() => {
-                setPersona((p) => ({ ...p, additional_context: null }));
-                setContextText('');
-                next();
-              }}
-              >
-                skip
-              </TextButton>
-            </div>
-          </StepShell>
-        );
-
-      case 10:
-        return (
-          <StepShell question="this is how your journal will sound">
-            <p className="mx-auto max-w-[85%] border-y border-abyss-600 py-8 text-center font-sans text-base leading-relaxed italic text-film-900">
-              {getPreviewText()}
-            </p>
+            {personaPreview && (
+              <div className="mt-6 mx-auto max-w-[90%] border-t border-abyss-600 pt-6">
+                <p className="font-sans text-[10px] uppercase tracking-[0.22em] text-film-500 text-center mb-3">
+                  preview
+                </p>
+                <p className="text-center font-sans text-base leading-relaxed italic text-film-900">
+                  {personaPreview}
+                </p>
+              </div>
+            )}
             {error && (
               <p className="font-sans text-sm text-aura-rough text-center mt-4">{error}</p>
             )}
@@ -495,14 +294,12 @@ export function OnboardingPage() {
     }
   }
 
-  // ─── Handle "Next" press for steps with special pre-advance logic ───
+  // ─── Handle "Next" press ───
 
   function handleNext() {
-    if (step === 9 && contextText.trim()) {
-      setPersona((p) => ({ ...p, additional_context: contextText.trim() }));
-    }
-    if (step === 10) {
-      handleFinish();
+    if (step === 4) {
+      const additionalContext = contextText.trim() || null;
+      void handleFinish(additionalContext);
       return;
     }
     next();
@@ -577,7 +374,7 @@ export function OnboardingPage() {
             pendingLabel="saving..."
             className="w-full"
           >
-            {step === 10 ? "looks good, let's go" : 'next'}
+            {step === 4 ? "looks good, let's go" : 'next'}
           </ActionButton>
           {step > 0 && (
             <div className="text-center">

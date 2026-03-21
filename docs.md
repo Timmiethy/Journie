@@ -10,10 +10,10 @@
 
 ### Core Loop
 
-1. User completes a one-time **persona survey** (60 seconds) so the AI knows their writing style and personality.
+1. User completes a one-time **persona survey** (5 focused questions) so the AI knows what they notice, what chapter they are in, and how the journal should sound.
 2. Throughout the day, the user captures or imports photos on `/home`, reviews them in a full-screen overlay, and saves **moments** with optional mood, typed context, and/or voice transcription.
 3. When the user is done for the day, they open **`/timeline`**, reorder or trim the day's moments, and tap **"done — generate my journal"**.
-4. The app navigates immediately to **`/journal/:date`** while the backend generates the draft asynchronously from the persona, ordered moments, recent confirmed journals, learned voice profile, and recent edit corrections when available.
+4. The app navigates immediately to **`/journal/:date`** while the backend generates the draft asynchronously from the persona, ordered moments, recent confirmed journals, remembered user facts, and recent edit corrections when available.
 5. The user reviews the draft, optionally edits it, confirms it, and that confirmed output becomes part of the future voice-learning loop.
 
 ### Key Design Principles
@@ -166,33 +166,19 @@ export interface User {
 export interface Persona {
   id: string;
   user_id: string;
-  writing_style: WritingStyle;
-  journal_topics: JournalTopic[];
-  narrative_voice: NarrativeVoice;
-  emotional_depth: EmotionalDepth;
-  personality_tags: PersonalityTag[];
-  mbti: MBTIType | null;
-  occupation: Occupation | null;
+  attention_filter: AttentionFilter;
+  life_chapter: LifeChapter;
+  tone_preset: TonePreset;
   daily_people: DailyPerson[];
-  daily_activities: DailyActivity[];
   additional_context: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export type WritingStyle = 'poetic' | 'casual' | 'reflective' | 'witty';
-export type JournalTopic = 'emotions' | 'events' | 'growth' | 'relationships' | 'ideas' | 'gratitude';
-export type NarrativeVoice = 'first_person' | 'second_person' | 'third_person';
-export type EmotionalDepth = 'light' | 'moderate' | 'deep';
-export type PersonalityTag = 'introvert' | 'extrovert' | 'night-owl' | 'early-bird' | 'coffee-lover' | 'foodie' | 'tech-nerd' | 'creative' | 'adventurous' | 'homebody' | 'overthinker' | 'optimist';
-export type MBTIType =
-  | 'INTJ' | 'INTP' | 'ENTJ' | 'ENTP'
-  | 'INFJ' | 'INFP' | 'ENFJ' | 'ENFP'
-  | 'ISTJ' | 'ISFJ' | 'ESTJ' | 'ESFJ'
-  | 'ISTP' | 'ISFP' | 'ESTP' | 'ESFP';
-export type Occupation = 'student' | 'professional' | 'freelancer' | 'between' | 'skip';
+export type AttentionFilter = 'memes' | 'people' | 'aesthetics' | 'selfies';
+export type LifeChapter = 'building' | 'cruising' | 'chaos' | 'waiting';
+export type TonePreset = 'poetic' | 'stoic' | 'roast' | 'hype';
 export type DailyPerson = 'partner' | 'close-friends' | 'family' | 'coworkers' | 'mostly-solo' | 'pets';
-export type DailyActivity = 'work-school' | 'cooking' | 'exercise' | 'reading' | 'music-art' | 'gaming' | 'nature' | 'cafe-culture' | 'side-projects' | 'travel' | 'socializing' | 'self-care';
 
 // ─── Moments ───
 
@@ -268,7 +254,7 @@ export interface DayTimeline {
 
 ## 5. Database Schema (SQL)
 
-The current schema lives in `supabase/migrations/001_initial_schema.sql`. The excerpt below matches the implemented migration as of the current repo state.
+The current schema starts in `supabase/migrations/001_initial_schema.sql` and is updated by `supabase/migrations/003_survey_rearchitecture.sql`. The excerpt below shows the current `personas` table shape after the survey rearchitecture migration.
 
 ```sql
 -- Enable UUID generation
@@ -278,28 +264,14 @@ create extension if not exists "uuid-ossp";
 create table personas (
   id uuid primary key default uuid_generate_v4(),
   user_id uuid references auth.users(id) on delete cascade not null unique,
-  -- Writing preferences (how the journal sounds)
-  writing_style text not null check (writing_style in ('poetic', 'casual', 'reflective', 'witty')),
-  journal_topics text[] not null default '{}',
-  narrative_voice text not null check (narrative_voice in ('first_person', 'second_person', 'third_person')),
-  emotional_depth text not null check (emotional_depth in ('light', 'moderate', 'deep')),
-  personality_tags text[] not null default '{}',
-  -- Life context (who the person is)
-  mbti text check (mbti in (
-    'INTJ','INTP','ENTJ','ENTP',
-    'INFJ','INFP','ENFJ','ENFP',
-    'ISTJ','ISFJ','ESTJ','ESFJ',
-    'ISTP','ISFP','ESTP','ESFP'
-  )),
-  occupation text check (occupation in ('student', 'professional', 'freelancer', 'between', 'skip')),
+  attention_filter text not null check (attention_filter in ('memes', 'people', 'aesthetics', 'selfies')),
+  life_chapter text not null check (life_chapter in ('building', 'cruising', 'chaos', 'waiting')),
+  tone_preset text not null check (tone_preset in ('poetic', 'stoic', 'roast', 'hype')),
   daily_people text[] not null default '{}',
-  daily_activities text[] not null default '{}',
-  -- Freeform
   additional_context text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
-
 -- ─── Moments ───
 create table moments (
   id uuid primary key default uuid_generate_v4(),
@@ -431,22 +403,17 @@ All screens render inside `AuraShell`, which applies the mood-reactive aura back
 **Route:** `/onboarding`
 
 **Current architecture:**
-- 11-step stepped survey rendered inside a surfaced card with a fixed frame and animated panel swaps
+- 5-step stepped survey rendered inside a surfaced card with a fixed frame and animated panel swaps
 - Global reduced-motion support: step transitions collapse to opacity-only if the user prefers reduced motion
 - Persona data is gathered in local component state and submitted once on the final step via `POST /api/persona`
+- The final step includes an inline preview sentence derived from `attention_filter`, `life_chapter`, and `tone_preset`
 
 **Implemented steps:**
-1. Writing style
-2. Journal topics (1–3)
-3. Narrative voice
-4. Emotional depth
-5. Personality tags (2–4)
-6. MBTI (optional / skippable)
-7. Occupation
-8. Daily people
-9. Daily activities (up to 4)
-10. Additional context (optional)
-11. Hardcoded style preview generated from the chosen style + narrative voice + MBTI
+1. Camera roll attention filter
+2. Life chapter
+3. AI tone preset
+4. Daily people
+5. Additional context + inline preview + finish
 
 ---
 
@@ -597,15 +564,10 @@ Create or update the current user's persona.
 **Request Body:**
 ```json
 {
-  "writing_style": "casual",
-  "journal_topics": ["emotions", "events"],
-  "narrative_voice": "first_person",
-  "emotional_depth": "moderate",
-  "personality_tags": ["coffee-lover", "overthinker"],
-  "mbti": "INFP",
-  "occupation": "student",
+  "attention_filter": "aesthetics",
+  "life_chapter": "building",
+  "tone_preset": "poetic",
   "daily_people": ["close-friends", "family"],
-  "daily_activities": ["work-school", "cooking", "side-projects"],
   "additional_context": "I'm Tan, a CS student who lives on cà phê sữa đá."
 }
 ```
@@ -799,43 +761,48 @@ Fetch in parallel:
 - **Persona** from `personas`
 - **Today's moments** from `moments` + `moment_photos`
 - **Recent confirmed journals** (up to 7) for continuity
-- **Voice profile** from `voice_profiles` if present
+- **Remembered user facts** from `user_memories`
 - **Recent edit diffs** from confirmed journals where `generated_content !== content`
 
 If `momentIds` were supplied by the timeline, reorder the fetched moments to match the exact client-side sequence before prompt assembly.
 
-#### Step 3: Describe photos
+#### Step 3: Prepare photo inputs and daily tags
 
 For each moment:
 - Create fresh 1-hour signed URLs from each `storage_path`
-- Send those URLs to GPT-4o vision with the shared photo prompt when OpenAI is configured
-- If OpenAI is unavailable or misconfigured, fall back to deterministic descriptions such as `"A single photo was captured for this moment."`
+- Fall back to the stored `photo_url` if a signed URL cannot be created but the public URL still exists
+- Send the signed photo URLs into the tag-extraction pipeline to build daily top tags before the writer prompt is assembled
 
 #### Step 4: Assemble the prompt
 
 The system prompt combines:
-- persona writing preferences
-- persona life context
-- recent confirmed journal excerpts
-- learned voice profile summary and preferred / avoided phrases
+- `attention_filter` to set the photo-interpretation lens and object-recognition weighting
+- `life_chapter` to set the baseline narrative arc for the day
+- `tone_preset` to set the voice and temperature
+- `daily_people` and `additional_context` for relationship and freeform context
+- recent confirmed journal excerpts for continuity
 - recent edit corrections distilled from `generated_content` vs confirmed `content`
+- remembered user facts from `user_memories`
+
+The writer voice is locked to first person (`I`) because the survey no longer asks for a separate narrative-voice preference.
 
 The user message enumerates the ordered moments:
 - formatted capture time
 - optional mood
-- photo descriptions
+- attached signed photo URLs
 - merged typed notes + voice transcript
 
 The current prompt adds two important calibration layers beyond the original MVP:
-- learned voice profile is treated as the highest-priority voice signal when available
+- persona framing now comes from the three-field survey (`attention_filter`, `life_chapter`, `tone_preset`) instead of the removed 11-step schema
 - recent edit corrections are treated as explicit examples of what the user rejected vs preferred
 
 #### Step 5: Generate the journal body
 
-- Primary path: OpenAI `chat.completions.create` with model `gpt-4o`
+- Primary path: `chat.completions.create` using the configured writer client (`qwen-plus-latest` via DashScope when available, otherwise `gpt-4o`)
 - Temperature: `0.8`
-- Max tokens: `1500`
-- Fallback path: deterministic journal assembly using the persona voice, ordered moments, mood, notes, and fallback photo descriptions
+- Max tokens: `2000`
+- The writer receives the prompt plus the day's signed image URLs directly as multimodal input
+- Fallback path: deterministic journal assembly using the persona tone preset, life chapter, ordered moments, mood, notes, and photo-count context
 
 #### Step 6: Persist the result
 
@@ -849,12 +816,12 @@ On unrecoverable failure:
 - mark the row as `draft`
 - set `content = "Generation failed — tap Regenerate to try again."`
 
-#### Step 7: Refresh voice profile in the background
+#### Step 7: Process memories in the background
 
-After a successful generation, the service triggers a non-blocking voice-profile refresh check:
-- count confirmed journals
-- if there are at least 5 more confirmed journals than the last analyzed count, distill a new voice profile with GPT-4o
-- persist `voice_summary`, `preferred_phrases`, `avoided_phrases`, and `journals_analyzed`
+After a successful generation, the service triggers a non-blocking memory pass:
+- evaluate confirmed insights plus daily top tags
+- decide which facts are worth storing in `user_memories`
+- persist only stable preferences, routines, relationship facts, identity facts, or voice tendencies
 
 ### Edit-Diff Learning Loop
 
@@ -864,8 +831,8 @@ After a successful generation, the service triggers a non-blocking voice-profile
 
 ### Graceful Degradation
 
-- If OpenAI is misconfigured, `OpenaiService` disables the client and the app falls back to deterministic journal / vision / transcription behavior instead of crashing
-- If the `generated_content` column or `voice_profiles` table is missing, the services log warnings and continue in a reduced-capability mode rather than failing the entire generation request
+- If the configured AI client is misconfigured, `AiClientService` disables that client and the app falls back to deterministic journal / tag / transcription behavior instead of crashing
+- If the `generated_content` column is missing, the services log warnings and continue in a reduced-capability mode rather than failing the entire generation request
 
 ---
 
@@ -1113,7 +1080,7 @@ All server env vars are secret. None are exposed to the browser.
 ### Build (hackathon MVP)
 
 - [x] Supabase auth (email/password)
-- [x] Persona survey (11 steps + hardcoded voice preview)
+- [x] Persona survey (5 steps: attention filter, life chapter, tone preset, daily people, additional context + inline preview)
 - [x] Home screen with live camera, library import, and below-the-fold gallery page
 - [x] Moment review overlay with photos + text context + mood
 - [x] Voice recording → Whisper transcription
@@ -1148,7 +1115,7 @@ These are minimum error handling requirements for the hackathon build:
 - **Network offline:** Show a top banner "You're offline" when `navigator.onLine` is false. Disable destructive actions (save, generate). Re-enable automatically when back online.
 
 ### Server-Side
-- **OpenAI failures:** Vision, transcription, and journal generation all degrade gracefully. If OpenAI is unavailable or misconfigured, the app falls back to deterministic photo descriptions, transcripts, and journal text instead of hard failing.
+- **OpenAI failures:** Tag extraction, transcription, and journal generation all degrade gracefully. If the configured AI client is unavailable or misconfigured, the app falls back to deterministic tags, transcripts, and journal text instead of hard failing.
 - **Unrecoverable generation failures:** Set journal status to `draft` with `content = "Generation failed — tap Regenerate to try again."` so the user isn't stuck on a `generating` spinner forever.
 - **Supabase Storage failures:** Return 500 with `{ error: "Photo upload failed" }`. The client retries.
 - **Rate limiting on `/api/journal/generate`:** Max 3 generation requests per user per day per date. Return 429 if exceeded. This prevents accidental OpenAI credit burn from spam-tapping "Regenerate".
@@ -1164,9 +1131,11 @@ These are minimum error handling requirements for the hackathon build:
 
 Since the team will use the app throughout the hackathon as the demo itself:
 
-1. **Day 0 (setup night):** Each team member completes persona survey with genuinely different styles (one casual, one poetic, one reflective). This showcases personalization during the demo.
+1. **Day 0 (setup night):** Each team member completes the persona survey with genuinely different attention filters, life chapters, and tone presets. This showcases personalization during the demo.
 2. **Day 1–2 (building):** Capture real moments — coding sessions, meals, whiteboard discussions, coffee runs. The more genuine the photos, the better the demo.
 3. **Demo:** Show a real generated journal from the hackathon itself. Pull up the calendar, show 2–3 days of entries, read one aloud. The journal IS the pitch.
 
 This is the strongest possible demo: a product that demonstrates itself through its own output.
+
+
 

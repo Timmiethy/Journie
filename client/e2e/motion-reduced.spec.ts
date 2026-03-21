@@ -30,7 +30,7 @@ test('onboarding step transitions collapse to opacity-only when reduced motion i
   const { email, password } = await createConfirmedUser(page.request);
   await loginWithPassword(page, email, password, '**/onboarding');
 
-  await page.getByRole('button', { name: /casual/i }).click();
+  await page.getByRole('button', { name: /unhinged memes/i }).click();
 
   const samplePromise = page.evaluate(() => {
     return new Promise<string[][]>((resolve) => {
@@ -55,7 +55,7 @@ test('onboarding step transitions collapse to opacity-only when reduced motion i
   });
 
   await page.getByRole('button', { name: /^next$/i }).click();
-  await expect(page.getByRole('heading', { name: /what matters to you\?/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /how does this (?:current )?chapter of your life feel\?/i })).toBeVisible();
 
   const transformSamples = await samplePromise;
   expect(transformSamples.flat().every(isStaticTransform)).toBeTruthy();
@@ -80,3 +80,5 @@ function isStaticTransform(transform: string) {
 
   return false;
 }
+
+

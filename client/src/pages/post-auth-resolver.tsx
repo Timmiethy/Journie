@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { supabase } from '../lib/supabase';
+import { getSessionWithRetry } from '../lib/auth-session';
 import { useStore } from '../lib/store';
 import { api } from '../lib/api';
 import { LoadingScreen } from '../components/loading-screen';
@@ -13,9 +13,7 @@ export function PostAuthResolverPage() {
     let cancelled = false;
 
     const resolveDestination = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const session = await getSessionWithRetry();
 
       if (!session?.user) {
         if (!cancelled) {
@@ -60,3 +58,4 @@ export function PostAuthResolverPage() {
     />
   );
 }
+

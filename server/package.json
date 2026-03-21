@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "build": "nest build",
-    "start": "nest start",
-    "start:dev": "nest start --watch",
-    "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main"
+    "start": "nest start --sourceRoot .. --entryFile server/src/main",
+    "start:dev": "nest start --watch --sourceRoot .. --entryFile server/src/main",
+    "start:debug": "nest start --debug --watch --sourceRoot .. --entryFile server/src/main",
+    "start:prod": "node dist/server/src/main.js"
   },
   "dependencies": {
     "@nestjs/common": "^10",

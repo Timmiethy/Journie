@@ -1,12 +1,10 @@
 import type { JournalEntry, Persona, MomentWithPhotos } from '../types';
+import { getAccessTokenOrThrow } from './auth-session';
 import { supabase } from './supabase';
 import { useStore } from './store';
 
 const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 const REQUEST_TIMEOUT_MS = 30000;
-const AUTH_SESSION_RETRIES = 20;
-const AUTH_SESSION_RETRY_MS = 150;
-
 type JournalUpdate = {
   content?: string;
   status?: JournalEntry['status'];
@@ -44,18 +42,7 @@ export class ApiError extends Error {
 }
 
 async function getAuthHeader(): Promise<Record<string, string>> {
-  for (let attempt = 0; attempt < AUTH_SESSION_RETRIES; attempt += 1) {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.access_token) {
-      return { Authorization: `Bearer ${session.access_token}` };
-    }
-
-    if (attempt < AUTH_SESSION_RETRIES - 1) {
-      await new Promise((resolve) => window.setTimeout(resolve, AUTH_SESSION_RETRY_MS));
-    }
-  }
-
-  throw new Error('Not authenticated');
+  return { Authorization: `Bearer ${await getAccessTokenOrThrow()}` };
 }
 
 async function request<T>(
@@ -158,3 +145,5 @@ export const api = {
     },
   },
 };
+
+

@@ -11,39 +11,19 @@ export interface User {
 export interface Persona {
   id: string;
   user_id: string;
-  writing_style: WritingStyle;
-  journal_topics: JournalTopic[];
-  narrative_voice: NarrativeVoice;
-  emotional_depth: EmotionalDepth;
-  personality_tags: PersonalityTag[];
-  mbti: MBTIType | null;
-  occupation: Occupation | null;
+  attention_filter: AttentionFilter;
+  life_chapter: LifeChapter;
+  tone_preset: TonePreset;
   daily_people: DailyPerson[];
-  daily_activities: DailyActivity[];
   additional_context: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export type WritingStyle = 'poetic' | 'casual' | 'reflective' | 'witty';
-export type JournalTopic = 'emotions' | 'events' | 'growth' | 'relationships' | 'ideas' | 'gratitude';
-export type NarrativeVoice = 'first_person' | 'second_person' | 'third_person';
-export type EmotionalDepth = 'light' | 'moderate' | 'deep';
-export type PersonalityTag =
-  | 'introvert' | 'extrovert' | 'night-owl' | 'early-bird'
-  | 'coffee-lover' | 'foodie' | 'tech-nerd' | 'creative'
-  | 'adventurous' | 'homebody' | 'overthinker' | 'optimist';
-export type MBTIType =
-  | 'INTJ' | 'INTP' | 'ENTJ' | 'ENTP'
-  | 'INFJ' | 'INFP' | 'ENFJ' | 'ENFP'
-  | 'ISTJ' | 'ISFJ' | 'ESTJ' | 'ESFJ'
-  | 'ISTP' | 'ISFP' | 'ESTP' | 'ESFP';
-export type Occupation = 'student' | 'professional' | 'freelancer' | 'between' | 'skip';
+export type AttentionFilter = 'memes' | 'people' | 'aesthetics' | 'selfies';
+export type LifeChapter = 'building' | 'cruising' | 'chaos' | 'waiting';
+export type TonePreset = 'poetic' | 'stoic' | 'roast' | 'hype';
 export type DailyPerson = 'partner' | 'close-friends' | 'family' | 'coworkers' | 'mostly-solo' | 'pets';
-export type DailyActivity =
-  | 'work-school' | 'cooking' | 'exercise' | 'reading'
-  | 'music-art' | 'gaming' | 'nature' | 'cafe-culture'
-  | 'side-projects' | 'travel' | 'socializing' | 'self-care';
 
 // ─── Moments ───
 

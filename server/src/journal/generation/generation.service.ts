@@ -15,7 +15,7 @@ import { MemoryService } from './memory.service';
 import { AiClientService } from '../../ai/ai-client.service';
 import { buildWriterSystemPrompt, buildWriterUserMessage } from './prompts';
 
-type NarrativeVoice = 'first_person' | 'second_person' | 'third_person';
+
 
 type MomentLike = {
   id: string;
@@ -27,15 +27,10 @@ type MomentLike = {
 };
 
 type PersonaLike = {
-  writing_style: string;
-  journal_topics: string[];
-  narrative_voice: string;
-  emotional_depth: string;
-  personality_tags: string[];
-  mbti: string | null;
-  occupation: string | null;
+  attention_filter: string;
+  life_chapter: string;
+  tone_preset: string;
   daily_people: string[];
-  daily_activities: string[];
   additional_context: string | null;
 };
 
@@ -706,11 +701,12 @@ export class GenerationService {
     }>,
   ): string {
     const dateLabel = format(new Date(`${date}T12:00:00`), 'EEEE, MMMM d, yyyy');
-    const voiceLabel = this.resolveVoiceLabel(persona.narrative_voice as NarrativeVoice);
     const intro =
-      persona.writing_style === 'poetic'
+      persona.tone_preset === 'poetic'
         ? `On ${dateLabel}, the day unfolded in small, memorable fragments.`
-        : `On ${dateLabel}, ${voiceLabel} moved through a day worth keeping.`;
+        : persona.tone_preset === 'roast'
+          ? `${dateLabel}. Another day survived. Here's the evidence.`
+          : `On ${dateLabel}, I moved through a day worth keeping.`;
 
     const momentParagraphs = describedMoments.map((moment) => {
       const moodText = moment.mood ? ` The mood felt ${moment.mood}.` : '';
@@ -722,22 +718,12 @@ export class GenerationService {
     });
 
     const closing =
-      persona.emotional_depth === 'deep'
-        ? 'Even in this fallback draft, the shape of the day still feels personal enough to return to.'
+      persona.life_chapter === 'building'
+        ? 'Even in this fallback draft, the shape of the day still feels like progress worth recording.'
         : 'It is a simple draft, but it still keeps the outline of the day intact.';
 
     return [intro, ...momentParagraphs, closing].join('\n\n');
   }
 
-  private resolveVoiceLabel(voice: NarrativeVoice): string {
-    switch (voice) {
-      case 'second_person':
-        return 'you';
-      case 'third_person':
-        return 'they';
-      case 'first_person':
-      default:
-        return 'I';
-    }
-  }
+
 }

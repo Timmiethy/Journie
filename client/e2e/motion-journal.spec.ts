@@ -16,7 +16,6 @@ test.use({
 
 async function createSeededUser(
   request: import('@playwright/test').APIRequestContext,
-  suffix: string,
 ) {
   const { email, password, userId } = await createConfirmedUser(request);
 
@@ -27,30 +26,10 @@ async function createSeededUser(
     Prefer: 'return=representation',
   };
 
-  const createPersonaResponse = await request.post(
-    `${serverEnv.SUPABASE_URL}/rest/v1/personas`,
-    {
-      headers,
-      data: {
-        user_id: userId,
-        writing_style: 'casual',
-        journal_topics: ['events'],
-        narrative_voice: 'first_person',
-        emotional_depth: 'moderate',
-        personality_tags: ['creative', 'optimist'],
-        mbti: 'INTJ',
-        occupation: 'student',
-        daily_people: ['mostly-solo'],
-        daily_activities: ['work-school'],
-        additional_context: 'Journal validation seed persona.',
-      },
-    },
-  );
+  await seedPersona(request, userId);
 
-  expect(createPersonaResponse.ok()).toBeTruthy();
   return { email, password, userId, headers };
 }
-
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const screenshotDir = path.resolve(testDirectory, '../test-results/validation/component-3');
 const pngDataUrl = `data:image/png;base64,${
@@ -75,7 +54,7 @@ test('journal generating state renders the quill loader without console errors',
     pageErrors.push(error.message);
   });
 
-  const { email, password, userId, headers } = await createSeededUser(request, 'generating');
+  const { email, password, userId, headers } = await createSeededUser(request);
 
   await page.request.post(`${serverEnv.SUPABASE_URL}/rest/v1/journal_entries`, {
     headers,
@@ -107,7 +86,7 @@ test('journal direct entry exits safely back home instead of falling through his
   test.setTimeout(120000);
 
   const today = await browserTodayISO(page);
-  const { email, password, userId, headers } = await createSeededUser(request, 'direct-exit');
+  const { email, password, userId, headers } = await createSeededUser(request);
 
   const createJournalResponse = await page.request.post(`${serverEnv.SUPABASE_URL}/rest/v1/journal_entries`, {
     headers,
@@ -135,7 +114,7 @@ test('history-opened journal returns to archive with an explicit exit', async ({
   test.setTimeout(120000);
 
   const today = await browserTodayISO(page);
-  const { email, password, userId, headers } = await createSeededUser(request, 'history-exit');
+  const { email, password, userId, headers } = await createSeededUser(request);
 
   const createJournalResponse = await page.request.post(`${serverEnv.SUPABASE_URL}/rest/v1/journal_entries`, {
     headers,
@@ -179,7 +158,7 @@ test('journal draft state renders semantic markdown blocks', async ({ page, requ
     pageErrors.push(error.message);
   });
 
-  const { email, password, userId, headers } = await createSeededUser(request, 'draft');
+  const { email, password, userId, headers } = await createSeededUser(request);
 
   const createMomentResponse = await page.request.post(`${serverEnv.SUPABASE_URL}/rest/v1/moments`, {
     headers,
@@ -250,3 +229,7 @@ test('journal draft state renders semantic markdown blocks', async ({ page, requ
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
+
+
+
+

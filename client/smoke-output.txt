@@ -1,0 +1,33 @@
+(node:24300) ExperimentalWarning: CommonJS module C:\Users\hlbtp\AppData\Roaming\npm\node_modules\npm\node_modules\debug\src\node.js is loading ES Module C:\Users\hlbtp\AppData\Roaming\npm\node_modules\npm\node_modules\supports-color\index.js using require().
+Support for loading ES Module in require() is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:43248) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+[WebServer] (Use `node --trace-deprecation ...` to show where the warning was created)
+
+Running 1 test using 1 worker
+
+  Γ£ÿ  1 e2e\smoke.spec.ts:18:1 ΓÇ║ journie motion flow renders and navigates without console errors (1.5m)
+
+
+  1) e2e\smoke.spec.ts:18:1 ΓÇ║ journie motion flow renders and navigates without console errors ΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+    [31mTest timeout of 90000ms exceeded.[39m
+
+    Error: page.waitForURL: Test timeout of 90000ms exceeded.
+    =========================== logs ===========================
+    waiting for navigation to "**/home" until "load"
+    ============================================================
+
+      68 |   await expect(page.getByText(/preview/i)).toBeVisible();
+      69 |   await page.getByRole('button', { name: /looks good, let's go/i }).click();
+    > 70 |   await page.waitForURL('**/home');
+         |              ^
+      71 |
+      72 |   await expect(page.getByRole('button', { name: /^journal$/i })).toBeVisible();
+      73 |   await page.screenshot({ path: path.join(validationDirectory, '02-home.png'), fullPage: true });
+        at D:\Journie\client\e2e\smoke.spec.ts:70:14
+
+    Error Context: test-results\smoke-journie-motion-flow--d14e1-ates-without-console-errors\error-context.md
+
+  1 failed
+    e2e\smoke.spec.ts:18:1 ΓÇ║ journie motion flow renders and navigates without console errors ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

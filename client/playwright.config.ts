@@ -16,10 +16,11 @@ export default defineConfig({
     },
   },
   webServer: {
-    command: 'pnpm run dev',
+    command: 'node scripts/dev-runner.mjs',
     url: testFrontendUrl,
     cwd: workspaceRoot,
     reuseExistingServer: true,
     timeout: 180000,
   },
 });
+

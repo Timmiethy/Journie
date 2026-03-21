@@ -33,7 +33,7 @@ test('onboarding transition container stays non-zero and rapid next does not dou
 
   await loginWithPassword(page, email, password, '**/onboarding');
 
-  await page.getByRole('button', { name: /casual/i }).click();
+  await page.getByRole('button', { name: /unhinged memes/i }).click();
   await page.screenshot({
     path: path.join(screenshotDir, 'onboarding-step-0.png'),
     fullPage: true,
@@ -87,8 +87,8 @@ test('onboarding transition container stays non-zero and rapid next does not dou
   const heights = await heightsPromise;
   expect(Math.min(...heights)).toBeGreaterThan(0);
 
-  await expect(page.getByRole('heading', { name: /what matters to you\?/i })).toBeVisible();
-  await expect(page.getByRole('heading', { name: /how do you talk to yourself\?/i })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /how does this chapter of your life feel\?/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /how should the ai sound\?/i })).toHaveCount(0);
 
   const exitingPanelState = await exitingPanelStatePromise;
 
@@ -108,3 +108,4 @@ test('onboarding transition container stays non-zero and rapid next does not dou
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
+

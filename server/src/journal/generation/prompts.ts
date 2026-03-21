@@ -44,15 +44,10 @@ Respond with ONLY a JSON array:
 
 export function buildWriterSystemPrompt(
   persona: {
-    writing_style: string;
-    journal_topics: string[];
-    narrative_voice: string;
-    emotional_depth: string;
-    personality_tags: string[];
-    mbti: string | null;
-    occupation: string | null;
+    attention_filter: string;
+    life_chapter: string;
+    tone_preset: string;
     daily_people: string[];
-    daily_activities: string[];
     additional_context: string | null;
   },
   memoryBlock: string,
@@ -67,24 +62,45 @@ export function buildWriterSystemPrompt(
     ? `\n\nRECENT EDIT CORRECTIONS (the user changed these AI drafts — avoid the patterns they rejected):\n${editDiffsBlock}`
     : '';
 
+  // ─── Attention Filter → Object Recognition Weights ───
+  const attentionInstructions: Record<string, string> = {
+    memes: 'This user is highly digital, ironic, and uses humor to communicate. Screenshots, memes, and digital artifacts are emotionally significant. Treat screen captures and text-heavy images as meaningful self-expression, not throwaway content.',
+    people: 'This user values relationships above all. Photos of people — even blurry, candid, or chaotic — carry the highest emotional weight. Focus on who is present, the social energy, and interpersonal dynamics visible in every image.',
+    aesthetics: 'This user finds meaning in quiet, inanimate beauty. A coffee cup is not "just coffee" — it is a moment of peace. A skyline, a street lamp, a texture — these are emotionally charged. Place high weight on atmosphere, composition, and sensory detail in objects and settings.',
+    selfies: 'This user is self-documenting. Selfies and self-portraits are acts of self-awareness, not vanity. Focus on their expression, energy, setting, and what the self-capture reveals about how they are feeling in that moment.',
+  };
+
+  // ─── Life Chapter → Narrative Arc Baseline ───
+  const chapterInstructions: Record<string, string> = {
+    building: 'The user is in a BUILDING phase. Frame mundane moments (studying late, messy desks, early mornings) as investment in the future. Even struggle is progress. The narrative arc is: construction → momentum → becoming.',
+    cruising: 'The user is CRUISING — life feels steady and good. Frame moments as savoring, not striving. The narrative arc is: appreciation → flow → contentment. Avoid manufacturing drama where there is none.',
+    chaos: 'The user is in a CHAOTIC phase — busy, overwhelming, but surviving. Frame the mess as beautiful entropy. A messy room is the storm of a full life. The narrative arc is: whirlwind → resilience → small victories.',
+    waiting: 'The user is WAITING for a plot twist — life feels stagnant or in-between. Frame quiet moments as the calm before change. The narrative arc is: stillness → observation → anticipation. Find the hidden momentum in the routine.',
+  };
+
+  // ─── Tone Preset → Voice / Temperature ───
+  const toneInstructions: Record<string, string> = {
+    poetic: 'VOICE: Poetic and deep. Romanticize the mundane. Use lyrical prose, sensory metaphors, and emotional resonance. Temperature: warm, literary, evocative. Write as if the ordinary is extraordinary.',
+    stoic: 'VOICE: Stoic and real. Observational, grounded, stripped of unnecessary emotion. Temperature: cool, precise, contemplative. State what happened and what it meant — nothing more. Let the facts carry the weight.',
+    roast: 'VOICE: Lightly roasting, highly ironic, Gen-Z humor. Self-deprecating but affectionate. Temperature: sharp, witty, conversational. Mock the user gently. Use slang naturally. The journal should make them laugh at themselves.',
+    hype: 'VOICE: Optimistic hype. Supportive, celebratory, energy-forward. Temperature: warm, enthusiastic, encouraging. Every moment is a win. Frame the day as progress. The user should feel like their own biggest fan wrote this.',
+  };
+
   return `You are a personal journal writer and insight extractor. You write daily journal entries
 for a specific person based on their captured moments, AND you perform deep inference on photos.
 
-PERSONA — WRITING PREFERENCES:
-- Writing style: ${persona.writing_style}
-- Topics they care about: ${persona.journal_topics.join(', ')}
-- Narrative voice: ${persona.narrative_voice} ("I" / "You" / "They")
-- Emotional depth: ${persona.emotional_depth}
-- Personality tags: ${persona.personality_tags.join(', ')}
+NARRATIVE VOICE: First person ("I"). Always write as the user speaking.
 
-PERSONA — LIFE CONTEXT:
-- MBTI: ${persona.mbti || 'not provided'}
-- Occupation: ${persona.occupation || 'not provided'}
-- People in their day: ${persona.daily_people.join(', ')}
-- Activities that fill their days: ${persona.daily_activities.join(', ')}
-- Additional context: "${persona.additional_context || 'none provided'}"
+${toneInstructions[persona.tone_preset] || toneInstructions.stoic}
 
-Use MBTI to shape cognitive/emotional texture. Use life context to ground the journal.
+PHOTO INTERPRETATION LENS:
+${attentionInstructions[persona.attention_filter] || attentionInstructions.aesthetics}
+
+LIFE CONTEXT — NARRATIVE ARC:
+${chapterInstructions[persona.life_chapter] || chapterInstructions.building}
+
+PEOPLE IN THEIR DAY: ${persona.daily_people.join(', ')}
+ADDITIONAL CONTEXT: "${persona.additional_context || 'none provided'}"
 ${memorySection}
 
 VOICE CALIBRATION (from recent journals):
@@ -103,7 +119,7 @@ Hypothesize: user is at a cafe, possibly with company. Confirm: if tags include 
 notes mention a friend → confirmed. Otherwise, just mention the cafe visit without guessing companions.
 
 OUTPUT FORMAT:
-Write the journal body first (200–500 words, markdown, persona voice).
+Write the journal body first (200–500 words, markdown, first-person voice).
 Then on new lines, add:
 
 <daily_achievement>≤10 words: the single most notable thing today</daily_achievement>
@@ -117,10 +133,10 @@ Then on new lines, add:
 </Insights>
 
 RULES:
-1. Write in the exact narrative voice specified.
-2. Match the writing style precisely.
+1. Write in first person ("I").
+2. Match the tone preset precisely — this is the #1 voice priority.
 3. Reference SPECIFIC details from the photos — colors, brands, settings.
-4. Honor the emotional depth setting.
+4. Apply the photo interpretation lens from the attention filter.
 5. Flow as a narrative, not a list. Natural transitions between moments.
 6. 200–500 words depending on moment count.
 7. Subtle markdown — occasional *emphasis*, line breaks for pacing. No headers.

@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Toaster } from 'sonner';
-import { supabase } from './lib/supabase';
+import { getSessionWithRetry } from './lib/auth-session';
 import { useStore } from './lib/store';
 import { CalendarDayPopover } from './components/calendar-day-popover';
 import { LoadingScreen } from './components/loading-screen';
@@ -24,7 +24,13 @@ function ProtectedRoute() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    let cancelled = false;
+
+    void getSessionWithRetry().then((session) => {
+      if (cancelled) {
+        return;
+      }
+
       if (session?.user) {
         useStore.getState().setUser(
           session.user.id,
@@ -33,6 +39,10 @@ function ProtectedRoute() {
       }
       setChecking(false);
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (checking) {
@@ -122,3 +132,4 @@ export default function App() {
     </BrowserRouter>
   );
 }
+

@@ -56,26 +56,16 @@ test('journie motion flow renders and navigates without console errors', async (
     await expect(page.getByRole('heading', { name: nextHeadingName })).toBeVisible();
   };
 
-  await expect(page.getByRole('heading', { name: /how should your journal sound\?/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /opened your camera roll right now/i })).toBeVisible();
 
   await page.screenshot({ path: path.join(validationDirectory, '01-onboarding.png'), fullPage: true });
 
-  await continueOnboarding(/casual/i, /what matters to you\?/i);
-  await continueOnboarding(/emotions/i, /how do you talk to yourself\?/i);
-  await continueOnboarding(/first person/i, /how deep should we go\?/i);
-  await continueOnboarding(/moderate/i, /pick what fits you/i);
-  await page.getByRole('button', { name: /creative/i }).click();
-  await page.getByRole('button', { name: /optimist/i }).click();
-  await expect(nextButton).toBeEnabled();
-  await nextButton.click();
-  await expect(page.getByRole('heading', { name: /what's your mbti type\?/i })).toBeVisible();
-  await continueOnboarding(/^intj$/i, /what do you do\?/i);
-  await continueOnboarding(/^student$/i, /who's usually in your day\?/i);
-  await continueOnboarding(/mostly solo/i, /what fills your days lately\?/i);
-  await continueOnboarding(/work \/ school/i, /tell the ai anything else/i);
+  await continueOnboarding(/unhinged memes/i, /how does this chapter of your life feel\?/i);
+  await continueOnboarding(/under construction/i, /how should the ai sound\?/i);
+  await continueOnboarding(/poetic and deep/i, /who's usually in your day\?/i);
+  await continueOnboarding(/mostly solo/i, /tell the ai anything else/i);
   await page.locator('textarea').fill('Motion validation user for the frontend flow.');
-  await nextButton.click();
-  await expect(page.getByRole('heading', { name: /this is how your journal will sound/i })).toBeVisible();
+  await expect(page.getByText(/preview/i)).toBeVisible();
   await page.getByRole('button', { name: /looks good, let's go/i }).click();
   await page.waitForURL('**/home');
 
@@ -163,13 +153,17 @@ test('journie motion flow renders and navigates without console errors', async (
     const confirmResponse = await confirmResponsePromise;
     expect(confirmResponse.ok()).toBeTruthy();
   }
-  await page.goto('/journals');
+  await page.getByRole('button', { name: /^back home$/i }).click();
+  await page.waitForURL('**/home');
+  await page.getByRole('button', { name: /^journal$/i }).click();
+  await page.waitForURL('**/journals');
   await expect(page.getByText(/^archive$/i).first()).toBeVisible();
   await expect(page.getByText(/^recent$/i)).toBeVisible();
   await expect(page.getByText(/^monthly archive$/i)).toHaveCount(0);
   await expect(page.getByText(/the most recent confirmed days you can reopen immediately\./i)).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^previous month$/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /^next month$/i })).toBeVisible();
+  await page.getByText(/loading this month's journals/i).waitFor({ state: 'hidden', timeout: 20000 }).catch(() => {});
   await page.screenshot({ path: path.join(validationDirectory, '07-history.png'), fullPage: true });
 
   const archiveDateLabel = new Date(`${journalDate}T12:00:00`).toLocaleDateString('en-US', {
@@ -215,3 +209,6 @@ test('journie motion flow renders and navigates without console errors', async (
   expect(filteredApiFailures).toEqual([]);
   expect(filteredResourceFailures).toEqual([]);
 });
+
+
+
