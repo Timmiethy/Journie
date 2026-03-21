@@ -112,6 +112,7 @@ export class JournalService {
     status?: string,
     from?: string,
     to?: string,
+    entryType?: string,
   ) {
     const supabase = this.supabaseService.getClient();
     let query = supabase
@@ -131,6 +132,10 @@ export class JournalService {
 
     if (to) {
       query = query.lte('day_date', to);
+    }
+
+    if (entryType) {
+      query = query.eq('entry_type', entryType);
     }
 
     const { data, error } = await query;

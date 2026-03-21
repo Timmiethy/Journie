@@ -4,8 +4,8 @@ import { useStore } from './store';
 
 const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 const REQUEST_TIMEOUT_MS = 30000;
-const AUTH_SESSION_RETRIES = 5;
-const AUTH_SESSION_RETRY_MS = 100;
+const AUTH_SESSION_RETRIES = 20;
+const AUTH_SESSION_RETRY_MS = 150;
 
 type JournalUpdate = {
   content?: string;

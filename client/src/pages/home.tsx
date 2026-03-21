@@ -11,7 +11,7 @@ import { HorizontalScrollStrip } from '../components/ui/horizontal-scroll-strip'
 import { AuraShell } from '../components/layout/AuraShell';
 import { HomeActivitySheet, type HomeSheetState } from '../components/home-activity-sheet';
 import { MomentForm } from '../components/moment-form';
-import { modalSpring, spring, tapMotionProps, withReducedMotion } from '../lib/motion';
+import { modalSpring, tapMotionProps, withReducedMotion } from '../lib/motion';
 import { preloadTimelinePage } from '../lib/route-preloaders';
 import { usePrefersReducedMotion } from '../lib/use-prefers-reduced-motion';
 import type { MomentWithPhotos, Mood } from '../types';
@@ -34,6 +34,7 @@ export function HomePage() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [captureQueue, setCaptureQueue] = useState<File[]>([]);
   const [sheetState, setSheetState] = useState<HomeSheetState>('collapsed');
+  const [sheetMotionProgress, setSheetMotionProgress] = useState(0);
   const [selectedMoment, setSelectedMoment] = useState<MomentWithPhotos | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [viewportHeight, setViewportHeight] = useState(() =>
@@ -41,14 +42,37 @@ export function HomePage() {
   );
 
   useEffect(() => {
-    api.moments
-      .list(todayISO())
-      .then((moments) => {
-        useStore.getState().setTodayMoments(moments);
-      })
-      .catch((error: unknown) => {
-        toast.error(error instanceof Error ? error.message : "failed to load today's moments");
-      });
+    let cancelled = false;
+
+    const loadTodayMoments = async () => {
+      let lastError: unknown = null;
+
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          const moments = await api.moments.list(todayISO());
+          if (!cancelled) {
+            useStore.getState().setTodayMoments(moments);
+          }
+          return;
+        } catch (error: unknown) {
+          lastError = error;
+
+          if (attempt < 3) {
+            await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+          }
+        }
+      }
+
+      if (!cancelled) {
+        toast.error(lastError instanceof Error ? lastError.message : "failed to load today's moments");
+      }
+    };
+
+    void loadTodayMoments();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -166,13 +190,18 @@ export function HomePage() {
       : null;
 
   const hasOverlayOpen = isFormOpen || selectedMoment !== null;
-  const heroOffset = sheetState === 'collapsed'
-    ? 0
-    : sheetState === 'peek'
-      ? -Math.min(viewportHeight * 0.16, 132)
-      : -Math.min(viewportHeight * 0.54, 432);
-  const heroScale = sheetState === 'full' ? 0.86 : sheetState === 'peek' ? 0.97 : 1;
-  const heroOpacity = sheetState === 'full' ? 0 : 1;
+  const clampedSheetMotionProgress = clamp(sheetMotionProgress, 0, 1);
+  const peekOffset = -Math.min(viewportHeight * 0.16, 132);
+  const fullOffset = -Math.min(viewportHeight * 0.54, 432);
+  const heroOffset = clampedSheetMotionProgress <= 0.5
+    ? interpolate(0, peekOffset, clampedSheetMotionProgress / 0.5)
+    : interpolate(peekOffset, fullOffset, (clampedSheetMotionProgress - 0.5) / 0.5);
+  const heroScale = clampedSheetMotionProgress <= 0.5
+    ? interpolate(1, 0.97, clampedSheetMotionProgress / 0.5)
+    : interpolate(0.97, 0.86, (clampedSheetMotionProgress - 0.5) / 0.5);
+  const heroOpacity = clampedSheetMotionProgress <= 0.5
+    ? 1
+    : interpolate(1, 0, (clampedSheetMotionProgress - 0.5) / 0.5);
 
   useEffect(() => {
     const queueCount = captureQueue.length;
@@ -210,8 +239,11 @@ export function HomePage() {
             className="relative flex min-h-[100svh] flex-col justify-center"
             animate={{ y: heroOffset, scale: heroScale, opacity: heroOpacity }}
             transition={withReducedMotion(Boolean(shouldReduceMotion), {
-              ...spring,
-              bounce: shouldReduceMotion ? 0 : 0.06,
+              type: 'spring',
+              stiffness: shouldReduceMotion ? 260 : 210,
+              damping: shouldReduceMotion ? 34 : 30,
+              mass: shouldReduceMotion ? 0.95 : 0.88,
+              bounce: shouldReduceMotion ? 0 : 0.03,
             })}
             style={{ transformOrigin: 'center top' }}
           >
@@ -229,6 +261,7 @@ export function HomePage() {
           <HomeActivitySheet
             state={sheetState}
             onStateChange={setSheetState}
+            onMotionProgress={setSheetMotionProgress}
             queuedFiles={captureQueue}
             todayMoments={todayMoments}
             primaryActionLabel={primaryActionLabel}
@@ -298,6 +331,14 @@ export function HomePage() {
       ) : null}
     </AuraShell>
   );
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function interpolate(from: number, to: number, progress: number) {
+  return from + (to - from) * clamp(progress, 0, 1);
 }
 
 function MomentDetailModal({

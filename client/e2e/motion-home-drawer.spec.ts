@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
+  browserTodayISO,
   createConfirmedUser,
   loginToHome,
   seedPersona,
@@ -23,6 +24,21 @@ async function dragActivityHandle(page: Page, deltaY: number) {
   await page.mouse.down();
   await page.mouse.move(startX, startY + deltaY, { steps: 8 });
   await page.mouse.up();
+}
+
+async function beginActivityHandleDrag(page: Page) {
+  const handle = page.getByTestId('home-activity-handle');
+  const box = await handle.boundingBox();
+  if (!box) {
+    throw new Error('Activity handle bounds were not available.');
+  }
+
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+
+  return { startX, startY };
 }
 
 async function expectSheetState(page: Page, state: 'collapsed' | 'peek' | 'full') {
@@ -54,7 +70,7 @@ test('home first viewport stays compact with a collapsed activity sheet when the
   expect(fitsViewport).toBeTruthy();
 });
 
-test('home bottom sheet peeks first and only expands to full after a second pull', async ({ page, request }) => {
+test('home bottom sheet follows the first pull smoothly, then expands to full on the next interaction', async ({ page, request }) => {
   test.setTimeout(120000);
 
   const { email, password, userId } = await createConfirmedUser(request);
@@ -68,7 +84,7 @@ test('home bottom sheet peeks first and only expands to full after a second pull
   };
 
   const capturedAt = new Date().toISOString();
-  const dayDate = capturedAt.slice(0, 10);
+  const dayDate = await browserTodayISO(page);
 
   const createMomentResponse = await page.request.post(`${serverEnv.SUPABASE_URL}/rest/v1/moments`, {
     headers,
@@ -102,12 +118,28 @@ test('home bottom sheet peeks first and only expands to full after a second pull
   await loginToHome(page, email, password);
 
   const viewportHeight = await getViewportHeight(page);
+  const collapsedSheet = await page.getByTestId('home-activity-sheet').boundingBox();
   const cameraBefore = await page.getByTestId('capture-morph').boundingBox();
-  if (!cameraBefore) {
-    throw new Error('Camera bounds were not available before opening the sheet.');
+  if (!collapsedSheet || !cameraBefore) {
+    throw new Error('Initial sheet or camera bounds were not available before opening the sheet.');
   }
 
-  await dragActivityHandle(page, -140);
+  const dragStart = await beginActivityHandleDrag(page);
+  await page.mouse.move(dragStart.startX, dragStart.startY - 140, { steps: 10 });
+  await expect
+    .poll(async () => {
+      const draggingBox = await page.getByTestId('home-activity-sheet').boundingBox();
+      return draggingBox?.height ?? 0;
+    })
+    .toBeGreaterThan(collapsedSheet.height + 56);
+  await expect
+    .poll(async () => {
+      const draggingCamera = await page.getByTestId('capture-morph').boundingBox();
+      return draggingCamera?.y ?? cameraBefore.y;
+    })
+    .toBeLessThan(cameraBefore.y);
+  await page.mouse.up();
+
   await expectSheetState(page, 'peek');
   await expect
     .poll(async () => await page.getByTestId('today-moment-card').count())
@@ -124,7 +156,7 @@ test('home bottom sheet peeks first and only expands to full after a second pull
   expect(cameraPeek.y).toBeLessThan(cameraBefore.y);
   expect(cameraPeek.y + cameraPeek.height).toBeLessThanOrEqual(viewportHeight);
 
-  await dragActivityHandle(page, -140);
+  await page.getByTestId('home-activity-handle').click();
   await expectSheetState(page, 'full');
   await expect(page.getByTestId('home-activity-full-grid')).toBeVisible();
   await expect

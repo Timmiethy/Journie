@@ -1,7 +1,48 @@
-// System prompt template for journal generation
-// See docs.md Section 9 for full prompt specs
+// ─── Prompt builders for Tags & Writer & Memory architecture ───
+// See docs.md Section 9 and implementation_plan.md for specs.
 
-export function buildSystemPrompt(
+// ─────────────────────────────────────────────
+// TAGS — Tag extraction prompt (Qwen 2.5 Flash)
+// ─────────────────────────────────────────────
+
+export function buildTagExtractionPrompt(
+  moment: {
+    text_context?: string | null;
+    voice_transcript?: string | null;
+    mood?: string | null;
+  },
+  photoUrls: string[],
+): string {
+  const contextParts: string[] = [];
+
+  if (moment.mood) contextParts.push(`Mood: ${moment.mood}`);
+  if (moment.text_context) contextParts.push(`User note: "${moment.text_context}"`);
+  if (moment.voice_transcript) contextParts.push(`Voice note: "${moment.voice_transcript}"`);
+  if (photoUrls.length > 0) contextParts.push(`${photoUrls.length} photo(s) attached`);
+
+  const context = contextParts.length > 0 ? contextParts.join('\n') : 'No additional context.';
+
+  return `Extract up to 5 descriptive tags from this moment. Each tag should capture a key theme, activity, object, or context.
+
+MOMENT CONTEXT:
+${context}
+
+RULES:
+1. Each tag is 1–3 lowercase words, no hashtags.
+2. Category must be one of: activity, location, food, social, mood, object, event, hobby, work, health.
+3. Confidence is 0.0–1.0 (how certain you are this tag applies).
+4. Be specific: "latte art" > "coffee", "morning run" > "exercise".
+5. If photos are attached, describe what you see and tag accordingly.
+
+Respond with ONLY a JSON array:
+[{ "tag": "string", "category": "string", "confidence": 0.0 }]`;
+}
+
+// ─────────────────────────────────────────────
+// WRITER — Journal generation (Qwen 3.5 Plus)
+// ─────────────────────────────────────────────
+
+export function buildWriterSystemPrompt(
   persona: {
     writing_style: string;
     journal_topics: string[];
@@ -14,20 +55,20 @@ export function buildSystemPrompt(
     daily_activities: string[];
     additional_context: string | null;
   },
+  memoryBlock: string,
   recentJournalExcerpts: string,
-  voiceProfileBlock: string,
   editDiffsBlock: string,
 ): string {
-  const voiceProfileSection = voiceProfileBlock
-    ? `\n\nLEARNED VOICE PROFILE (distilled from the user's journal history — this is the most reliable signal for their voice):\n${voiceProfileBlock}`
+  const memorySection = memoryBlock && memoryBlock !== 'No prior user knowledge yet.'
+    ? `\n\nUSER MEMORY (facts you know about this person — reference naturally, never list them):\n${memoryBlock}`
     : '';
 
   const editCorrectionsSection = editDiffsBlock
-    ? `\n\nRECENT EDIT CORRECTIONS (the user changed these parts of AI-generated drafts — learn from these corrections and avoid repeating the same mistakes):\n${editDiffsBlock}`
+    ? `\n\nRECENT EDIT CORRECTIONS (the user changed these AI drafts — avoid the patterns they rejected):\n${editDiffsBlock}`
     : '';
 
-  return `You are a personal journal writer. You write daily journal entries for a specific person
-based on their captured moments throughout the day.
+  return `You are a personal journal writer and insight extractor. You write daily journal entries
+for a specific person based on their captured moments, AND you perform deep inference on photos.
 
 PERSONA — WRITING PREFERENCES:
 - Writing style: ${persona.writing_style}
@@ -41,59 +82,213 @@ PERSONA — LIFE CONTEXT:
 - Occupation: ${persona.occupation || 'not provided'}
 - People in their day: ${persona.daily_people.join(', ')}
 - Activities that fill their days: ${persona.daily_activities.join(', ')}
-- Additional context from the user: "${persona.additional_context || 'none provided'}"
+- Additional context: "${persona.additional_context || 'none provided'}"
 
-Use the MBTI type to shape the cognitive and emotional texture of the journal.
-For example: an INTJ journals with analytical precision and internal processing.
-An ESFP journals with sensory detail and in-the-moment energy.
-An INFP journals with emotional depth and idealistic reflection.
-If MBTI is not provided, rely on the other persona signals.
-
-Use the life context (occupation, people, activities) to make the journal feel grounded
-in the user's real life. Reference their world naturally — a student's journal mentions
-classes and deadlines, a freelancer's mentions clients and creative blocks. Don't force
-it; only reference what's relevant to the day's moments.
-${voiceProfileSection}
+Use MBTI to shape cognitive/emotional texture. Use life context to ground the journal.
+${memorySection}
 
 VOICE CALIBRATION (from recent journals):
 ${recentJournalExcerpts || 'No previous journals yet.'}
 ${editCorrectionsSection}
 
+REASONING METHOD — HYPOTHESIS → CONFIRMATION:
+For each photo, follow this internal process:
+1. OBSERVE: What objects, people, settings, foods, brands, locations are visible?
+2. HYPOTHESIZE: What is the user likely doing? Who might they be with? What does this suggest?
+3. CONFIRM: Cross-reference with their tags, text notes, mood, and memory. Only state what is supported.
+4. If uncertain, omit the inference. Better to be SHORT than OVERCONFIDENT about assumptions.
+
+Example: A coffee menu photo → Observe: menu board with specialty drinks, warm lighting.
+Hypothesize: user is at a cafe, possibly with company. Confirm: if tags include "social" or
+notes mention a friend → confirmed. Otherwise, just mention the cafe visit without guessing companions.
+
+OUTPUT FORMAT:
+Write the journal body first (200–500 words, markdown, persona voice).
+Then on new lines, add:
+
+<daily_achievement>≤10 words: the single most notable thing today</daily_achievement>
+
+<best_photo>moment_photo_id_or_index_of_best_photo</best_photo>
+
+<Insights>
+- Each insight on its own line, prefixed with [CONFIRMED] or [UNCONFIRMED]
+- Example: [CONFIRMED] User tried a new Vietnamese coffee shop (menu photo + "finally went" note)
+- Example: [UNCONFIRMED] Possibly meeting a friend (two cups visible, no text confirmation)
+</Insights>
+
 RULES:
-1. Write in the exact narrative voice specified (first/second/third person).
-2. Match the writing style precisely. If "casual", use slang and short sentences.
-   If "poetic", use imagery and rhythm. If "reflective", ask internal questions.
-   If "witty", use humor and irony.
-3. Reference SPECIFIC details from the photos.
+1. Write in the exact narrative voice specified.
+2. Match the writing style precisely.
+3. Reference SPECIFIC details from the photos — colors, brands, settings.
 4. Honor the emotional depth setting.
-5. The journal should flow as a narrative of the day, not a list of events.
-   Transitions between moments should feel natural.
-6. Length: 200-500 words depending on number of moments.
-7. Use markdown formatting subtly — no headers, but occasional *emphasis* or line breaks for pacing.
-8. If the user provided text or voice context for a moment, weave their exact words and sentiments into the narrative naturally.
-9. End with a closing reflection or feeling that ties the day together.
-10. If a learned voice profile is provided, treat it as the highest-priority voice signal.
-    Match the user's specific phrases, sentence patterns, and emotional expression style.
-11. If edit corrections are provided, actively avoid the patterns the user rejected
-    and lean into the patterns they preferred.`;
+5. Flow as a narrative, not a list. Natural transitions between moments.
+6. 200–500 words depending on moment count.
+7. Subtle markdown — occasional *emphasis*, line breaks for pacing. No headers.
+8. Weave the user's exact words/sentiments naturally into the narrative.
+9. End with a closing reflection that ties the day together.
+10. <daily_achievement> must be ≤10 words. Pick the single highlight.
+11. <Insights> are HIDDEN from the user. Be analytical and specific.
+12. NEVER fabricate details not supported by evidence. Short > wrong.`;
 }
 
-export function buildUserMessage(moments: Array<{
-  index: number;
-  time: string;
-  mood: string | null;
-  photoDescriptions: string;
-  notes: string | null;
-}>, formattedDate: string): string {
-  const momentBlocks = moments.map((m) => `---
+export function buildWriterUserMessage(
+  moments: Array<{
+    index: number;
+    time: string;
+    mood: string | null;
+    photoUrls: string[];
+    notes: string | null;
+  }>,
+  formattedDate: string,
+  dailyTopTags: Array<{ tag: string; category: string; score: number }>,
+): string {
+  const tagBlock = dailyTopTags.length > 0
+    ? `TODAY'S TOP TAGS: ${dailyTopTags.map((t) => `${t.tag} (${t.category})`).join(', ')}\n\n`
+    : '';
+
+  const momentBlocks = moments.map((m) => {
+    const photoNote = m.photoUrls.length > 0
+      ? `Photos: ${m.photoUrls.length} image(s) attached`
+      : 'Photos: none';
+
+    return `---
 MOMENT ${m.index + 1} — ${m.time}
 Mood: ${m.mood || 'not specified'}
-Photos: ${m.photoDescriptions}
+${photoNote}
 User's notes: ${m.notes || 'none'}
----`).join('\n\n');
+---`;
+  }).join('\n\n');
 
-  return `Write today's journal entry based on these moments:\n\n${momentBlocks}\n\nToday's date: ${formattedDate}`;
+  return `${tagBlock}Write today's journal entry based on these moments:\n\n${momentBlocks}\n\nToday's date: ${formattedDate}`;
 }
+
+// ─────────────────────────────────────────────
+// MEMORY — Gating prompt (Qwen 3.5 Plus)
+// ─────────────────────────────────────────────
+
+export function buildMemoryGatingPrompt(
+  confirmedInsights: Array<{ text: string }>,
+  dailyTopTags: Array<{ tag: string; category: string; score: number }>,
+  existingMemories: Array<{ category: string; fact: string }>,
+): string {
+  const insightsBlock = confirmedInsights
+    .map((i, idx) => `${idx + 1}. ${i.text}`)
+    .join('\n');
+
+  const tagsBlock = dailyTopTags
+    .map((t) => `• ${t.tag} (${t.category}, score: ${t.score})`)
+    .join('\n');
+
+  const existingBlock = existingMemories.length > 0
+    ? existingMemories.map((m) => `[${m.category}] ${m.fact}`).join('\n')
+    : 'No existing memories yet.';
+
+  return `Evaluate these daily insights and decide which are significant enough to remember long-term about this user.
+
+TODAY'S CONFIRMED INSIGHTS:
+${insightsBlock}
+
+TODAY'S TAG TRENDS:
+${tagsBlock}
+
+EXISTING USER MEMORIES:
+${existingBlock}
+
+EVALUATION CRITERIA:
+- Is this a NEW fact not already covered by existing memories?
+- Is this STABLE (likely to remain true), not a one-off event?
+- Does this reveal a PREFERENCE, RELATIONSHIP, ROUTINE, IDENTITY trait, or VOICE pattern?
+- Trivial daily events (ate lunch, went to work) are NOT worth remembering unless they reveal a pattern.
+
+For each insight worth remembering, categorize it:
+- preference: likes/dislikes, tastes, habitual choices
+- relationship: people in their life, social patterns
+- routine: regular activities, schedules, habits
+- identity: career, education, personal traits, values
+- voice: writing style patterns (only from edit corrections)
+
+Respond with a JSON array of memories to ADD (may be empty if nothing is significant):
+[{ "category": "string", "fact": "concise statement", "confidence": 0.0-1.0 }]`;
+}
+
+// ─────────────────────────────────────────────
+// WEEKLY — Tag curation + summary prompts
+// ─────────────────────────────────────────────
+
+export function buildWeeklyTagCurationPrompt(
+  weeklyTags: Array<{ tag: string; category: string; score: number }>,
+): string {
+  const tagList = weeklyTags
+    .map((t, i) => `${i + 1}. ${t.tag} (${t.category}, score: ${t.score})`)
+    .join('\n');
+
+  return `From these top weekly tags, select the 3 that represent the most meaningful and telling metrics about the user's week. These will be shown as "Weekly Stats."
+
+Prioritize tags that:
+- Reveal a trend or pattern across multiple days
+- Represent something the user would find insightful about themselves
+- Are specific enough to be interesting (not generic like "photo" or "activity")
+
+TOP 10 WEEKLY TAGS:
+${tagList}
+
+Respond with ONLY a JSON array of the top 3:
+[{ "tag": "string", "category": "string", "score": number }]`;
+}
+
+export function buildWeeklyWriterPrompt(
+  curatedTopTags: Array<{ tag: string; category: string; score: number }>,
+  dailyJournals: Array<{ date: string; content: string }>,
+  dailyInsights: Array<{ date: string; insights: Array<{ text: string; confirmed: boolean }> }>,
+  memoryBlock: string,
+): string {
+  const tagBlock = curatedTopTags
+    .map((t) => `• ${t.tag} (${t.category})`)
+    .join('\n');
+
+  const journalBlock = dailyJournals
+    .map((j) => `[${j.date}]\n${j.content.split(/\s+/).slice(0, 80).join(' ')}...`)
+    .join('\n\n');
+
+  const insightBlock = dailyInsights
+    .flatMap((d) =>
+      d.insights
+        .filter((i) => i.confirmed)
+        .map((i) => `[${d.date}] ${i.text}`),
+    )
+    .join('\n');
+
+  return `Write a weekly journal summary for this user's week.
+
+WEEKLY TOP TAGS (curated):
+${tagBlock}
+
+DAILY JOURNAL EXCERPTS:
+${journalBlock}
+
+WEEKLY CONFIRMED INSIGHTS:
+${insightBlock || 'None'}
+
+USER MEMORY:
+${memoryBlock}
+
+OUTPUT FORMAT:
+1. A narrative summary (300–600 words) that weaves the week's themes together.
+2. A "Weekly Stats" block:
+
+📊 **Weekly Stats**
+• 🏷️ Top tags: [the 3 curated tags]
+• ✨ Highlight: [single most notable moment of the week, ≤15 words]
+
+3. Select the best photo of the week:
+<best_photo>moment_photo_id_or_index</best_photo>
+
+<weekly_achievement>≤15 words: the week's defining moment</weekly_achievement>`;
+}
+
+// ─────────────────────────────────────────────
+// LEGACY — kept for backward compat (transcription, etc.)
+// ─────────────────────────────────────────────
 
 export const PHOTO_VISION_PROMPT = `Describe what you see in these photos in vivid, specific detail.
 Focus on: the setting, people present, objects, food, activities,

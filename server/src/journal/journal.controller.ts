@@ -14,8 +14,10 @@ import { AuthGuard } from '../common/guards/auth.guard';
 import { CurrentUser } from '../common/decorators/current-user';
 import { JournalService } from './journal.service';
 import { GenerationService } from './generation/generation.service';
+import { WeeklyService } from './generation/weekly.service';
 import { GenerateJournalDto } from './dto/generate-journal.dto';
 import { UpdateJournalDto } from './dto/update-journal.dto';
+import { GenerateWeeklyDto } from './dto/generate-weekly.dto';
 
 @Controller('journal')
 @UseGuards(AuthGuard)
@@ -23,6 +25,7 @@ export class JournalController {
   constructor(
     private journalService: JournalService,
     private generationService: GenerationService,
+    private weeklyService: WeeklyService,
   ) {}
 
   @Post('generate')
@@ -32,6 +35,15 @@ export class JournalController {
     @Body() body: GenerateJournalDto,
   ) {
     return this.generationService.generate(user.id, body.date, body.regenerate, body.momentIds);
+  }
+
+  @Post('generate-weekly')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async generateWeekly(
+    @CurrentUser() user: { id: string },
+    @Body() body: GenerateWeeklyDto,
+  ) {
+    return this.weeklyService.generateWeekly(user.id, body.week_start);
   }
 
   @Get(':date')
@@ -65,6 +77,7 @@ export class JournalsController {
     @Query('status') status?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('entry_type') entryType?: string,
   ) {
     return this.journalService.listByUser(
       user.id,
@@ -73,6 +86,7 @@ export class JournalsController {
       status,
       from,
       to,
+      entryType,
     );
   }
 }

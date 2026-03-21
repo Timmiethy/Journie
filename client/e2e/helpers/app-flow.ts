@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { APIRequestContext, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
+import { format } from 'date-fns';
 
 function readEnvFile(filePath: string): Record<string, string> {
   return fs
@@ -154,4 +155,18 @@ export async function seedPersona(request: APIRequestContext, userId: string) {
   );
 
   expect(response.ok()).toBeTruthy();
+}
+
+export function localTodayISO(date = new Date()) {
+  return format(date, 'yyyy-MM-dd');
+}
+
+export async function browserTodayISO(page: Page) {
+  return page.evaluate(() => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
 }

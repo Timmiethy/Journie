@@ -319,6 +319,9 @@ export function JournalViewPage() {
               content={journal.content}
               photos={allPhotos}
               onPhotoClick={setLightboxUrl}
+              dailyAchievement={journal.daily_achievement}
+              bestPhotoUrl={journal.best_photo_url}
+              entryType={journal.entry_type}
             />
 
             {journal.status === 'generating' && loadingFailed ? (
@@ -430,7 +433,11 @@ function createPendingJournal(date: string): JournalEntry {
     user_id: '',
     day_date: date,
     content: '',
+    generated_content: null,
     status: 'generating',
+    entry_type: 'daily',
+    daily_achievement: null,
+    best_photo_url: null,
     generated_at: timestamp,
     confirmed_at: null,
     created_at: timestamp,

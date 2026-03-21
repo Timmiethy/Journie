@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import {
+  browserTodayISO,
   createConfirmedUser,
   loginToHome,
   seedPersona,
@@ -60,7 +61,7 @@ test('journal generating state renders the quill loader without console errors',
   test.setTimeout(120000);
   fs.mkdirSync(screenshotDir, { recursive: true });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = await browserTodayISO(page);
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
 
@@ -105,7 +106,7 @@ test('journal generating state renders the quill loader without console errors',
 test('journal direct entry exits safely back home instead of falling through history', async ({ page, request }) => {
   test.setTimeout(120000);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = await browserTodayISO(page);
   const { email, password, userId, headers } = await createSeededUser(request, 'direct-exit');
 
   const createJournalResponse = await page.request.post(`${serverEnv.SUPABASE_URL}/rest/v1/journal_entries`, {
@@ -133,7 +134,7 @@ test('journal direct entry exits safely back home instead of falling through his
 test('history-opened journal returns to archive with an explicit exit', async ({ page, request }) => {
   test.setTimeout(120000);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = await browserTodayISO(page);
   const { email, password, userId, headers } = await createSeededUser(request, 'history-exit');
 
   const createJournalResponse = await page.request.post(`${serverEnv.SUPABASE_URL}/rest/v1/journal_entries`, {
@@ -164,7 +165,7 @@ test('journal draft state renders semantic markdown blocks', async ({ page, requ
   test.setTimeout(120000);
   fs.mkdirSync(screenshotDir, { recursive: true });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = await browserTodayISO(page);
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
 

@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type TouchEvent as ReactTouchEvent } from 'react';
-import { m, AnimatePresence } from 'framer-motion';
+import {
+  animate,
+  m,
+  AnimatePresence,
+  useMotionValue,
+  type AnimationPlaybackControls,
+} from 'framer-motion';
 import { X } from 'lucide-react';
 import { formatTime } from '../lib/utils';
 import { spring, withReducedMotion } from '../lib/motion';
@@ -17,6 +23,7 @@ export type HomeSheetState = 'collapsed' | 'peek' | 'full';
 interface HomeActivitySheetProps {
   state: HomeSheetState;
   onStateChange: (state: HomeSheetState) => void;
+  onMotionProgress?: (progress: number) => void;
   queuedFiles: File[];
   todayMoments: MomentWithPhotos[];
   primaryActionLabel: string | null;
@@ -32,6 +39,7 @@ interface HomeActivitySheetProps {
 export function HomeActivitySheet({
   state,
   onStateChange,
+  onMotionProgress,
   queuedFiles,
   todayMoments,
   primaryActionLabel,
@@ -48,7 +56,15 @@ export function HomeActivitySheet({
   const hasQueue = queuePreviewUrls.length > 0;
   const [peekHeight, setPeekHeight] = useState(288);
   const [fullHeight, setFullHeight] = useState(640);
-  const gestureRef = useRef<{ startY: number; lastY: number; startTime: number } | null>(null);
+  const [dragHeight, setDragHeight] = useState<number | null>(null);
+  const sheetHeight = useMotionValue(COLLAPSED_HEIGHT);
+  const controlsRef = useRef<AnimationPlaybackControls | null>(null);
+  const gestureRef = useRef<{
+    startY: number;
+    lastY: number;
+    startTime: number;
+    startHeight: number;
+  } | null>(null);
   const suppressToggleClickRef = useRef(false);
 
   useEffect(() => {
@@ -79,9 +95,37 @@ export function HomeActivitySheet({
     : state === 'peek'
       ? peekHeight
       : fullHeight;
-  const sheetSurfaceClassName = state === 'full'
+  const displayHeight = dragHeight ?? height;
+  const displayState = dragHeight === null
+    ? state
+    : getVisualState(displayHeight, peekHeight, fullHeight);
+  const settleTransition = withReducedMotion(Boolean(shouldReduceMotion), {
+    type: 'spring',
+    stiffness: shouldReduceMotion ? 260 : 220,
+    damping: shouldReduceMotion ? 36 : 34,
+    mass: shouldReduceMotion ? 0.9 : 0.86,
+    bounce: shouldReduceMotion ? 0 : 0.04,
+  });
+  const sheetSurfaceClassName = displayState === 'full'
     ? 'flex h-full flex-col overflow-hidden rounded-t-[30px] border border-white/8 bg-[linear-gradient(180deg,rgba(7,8,11,0.98)_0%,rgba(5,6,8,0.97)_22%,rgba(4,4,5,0.99)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_-24px_60px_rgba(0,0,0,0.5)] backdrop-blur-[40px]'
     : 'flex h-full flex-col overflow-hidden rounded-t-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.03)_16%,rgba(5,5,5,0.24)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_24px_80px_rgba(0,0,0,0.38)] backdrop-blur-2xl';
+
+  useEffect(() => {
+    if (dragHeight !== null) {
+      return undefined;
+    }
+
+    controlsRef.current?.stop();
+    controlsRef.current = animate(sheetHeight, height, settleTransition);
+
+    return () => {
+      controlsRef.current?.stop();
+    };
+  }, [dragHeight, height, settleTransition, sheetHeight]);
+
+  useEffect(() => {
+    onMotionProgress?.(getStageProgress(displayHeight, peekHeight, fullHeight));
+  }, [displayHeight, fullHeight, onMotionProgress, peekHeight]);
 
   const handleStateToggle = () => {
     if (suppressToggleClickRef.current) {
@@ -89,12 +133,12 @@ export function HomeActivitySheet({
       return;
     }
 
-    if (state === 'collapsed') {
+    if (displayState === 'collapsed') {
       onStateChange('peek');
       return;
     }
 
-    if (state === 'peek') {
+    if (displayState === 'peek') {
       onStateChange('full');
       return;
     }
@@ -102,7 +146,7 @@ export function HomeActivitySheet({
     onStateChange('peek');
   };
 
-  const handleGesture = (offsetY: number, velocityY: number) => {
+  const handleGesture = (offsetY: number, velocityY: number, currentHeight: number) => {
     if (Math.abs(offsetY) > 6) {
       suppressToggleClickRef.current = true;
       window.setTimeout(() => {
@@ -110,39 +154,39 @@ export function HomeActivitySheet({
       }, 250);
     }
 
-    const wantsOpen = offsetY <= -OPEN_DISTANCE || velocityY <= -OPEN_VELOCITY;
-    const wantsClose = offsetY >= OPEN_DISTANCE || velocityY >= OPEN_VELOCITY;
+    if (Math.abs(offsetY) < 6 && Math.abs(velocityY) < 120) {
+      setDragHeight(null);
+      suppressToggleClickRef.current = true;
+      window.setTimeout(() => {
+        suppressToggleClickRef.current = false;
+      }, 250);
+      if (state === 'collapsed') {
+        onStateChange('peek');
+        return;
+      }
 
-    if (state === 'collapsed' && wantsOpen) {
-      onStateChange('peek');
-      return;
-    }
-
-    if (state === 'peek') {
-      if (wantsOpen) {
+      if (state === 'peek') {
         onStateChange('full');
         return;
       }
 
-      if (wantsClose) {
-        onStateChange('collapsed');
-        return;
-      }
-    }
-
-    if (state === 'full' && wantsClose) {
       onStateChange('peek');
       return;
     }
 
-    onStateChange(state);
+    const nextState = resolveState(offsetY, currentHeight, velocityY, peekHeight, fullHeight, state);
+    setDragHeight(null);
+    onStateChange(nextState);
   };
 
   const beginGesture = (clientY: number) => {
+    controlsRef.current?.stop();
+    const startHeight = sheetHeight.get();
     gestureRef.current = {
       startY: clientY,
       lastY: clientY,
       startTime: performance.now(),
+      startHeight,
     };
   };
 
@@ -152,6 +196,14 @@ export function HomeActivitySheet({
     }
 
     gestureRef.current.lastY = clientY;
+    const offsetY = clientY - gestureRef.current.startY;
+    const nextHeight = clamp(
+      gestureRef.current.startHeight - offsetY,
+      COLLAPSED_HEIGHT,
+      fullHeight,
+    );
+    setDragHeight(nextHeight);
+    sheetHeight.set(nextHeight);
   };
 
   const finalizeGesture = () => {
@@ -162,8 +214,9 @@ export function HomeActivitySheet({
     const elapsedSeconds = Math.max((performance.now() - gestureRef.current.startTime) / 1000, 0.001);
     const offsetY = gestureRef.current.lastY - gestureRef.current.startY;
     const velocityY = offsetY / elapsedSeconds;
+    const currentHeight = dragHeight ?? sheetHeight.get();
     gestureRef.current = null;
-    handleGesture(offsetY, velocityY);
+    handleGesture(offsetY, velocityY, currentHeight);
   };
 
   const handleMouseDown = (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -221,13 +274,9 @@ export function HomeActivitySheet({
   return (
     <m.section
       data-testid="home-activity-sheet"
-      data-sheet-state={state}
+      data-sheet-state={displayState}
       className="fixed bottom-0 left-0 right-0 z-30 mx-auto w-full max-w-[480px] px-4 sm:px-6"
-      animate={{ height }}
-      transition={withReducedMotion(Boolean(shouldReduceMotion), {
-        ...spring,
-        bounce: shouldReduceMotion ? 0 : 0.08,
-      })}
+      style={{ height: sheetHeight }}
     >
       <div className={sheetSurfaceClassName}>
         <m.button
@@ -236,12 +285,12 @@ export function HomeActivitySheet({
           onTouchStart={handleTouchStart}
           onClick={handleStateToggle}
           data-testid="home-activity-handle"
-          data-sheet-state={state}
-          aria-expanded={state !== 'collapsed'}
+          data-sheet-state={displayState}
+          aria-expanded={displayState !== 'collapsed'}
           aria-label={
-            state === 'collapsed'
+            displayState === 'collapsed'
               ? 'Open activity drawer'
-              : state === 'peek'
+              : displayState === 'peek'
                 ? 'Expand activity drawer'
                 : 'Collapse activity drawer'
           }
@@ -251,8 +300,8 @@ export function HomeActivitySheet({
         </m.button>
 
         <div className="flex-1 overflow-hidden px-4 pb-4 pt-1 sm:px-5 sm:pb-5">
-          <AnimatePresence mode="wait" initial={false}>
-            {state === 'collapsed' ? (
+          <AnimatePresence mode="sync" initial={false}>
+            {displayState === 'collapsed' ? (
               <m.div
                 key="collapsed-sheet-state"
                 initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
@@ -261,7 +310,7 @@ export function HomeActivitySheet({
                 transition={withReducedMotion(Boolean(shouldReduceMotion), spring)}
                 className="h-full"
               />
-            ) : state === 'peek' ? (
+            ) : displayState === 'peek' ? (
               <m.div
                 key="peek-sheet-state"
                 initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
@@ -310,6 +359,89 @@ export function HomeActivitySheet({
       </div>
     </m.section>
   );
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getVisualState(
+  height: number,
+  peekHeight: number,
+  fullHeight: number,
+): HomeSheetState {
+  const collapsedToPeekThreshold = (COLLAPSED_HEIGHT + peekHeight) / 2;
+  const peekToFullThreshold = (peekHeight + fullHeight) / 2;
+
+  if (height <= collapsedToPeekThreshold) {
+    return 'collapsed';
+  }
+
+  if (height < peekToFullThreshold) {
+    return 'peek';
+  }
+
+  return 'full';
+}
+
+function resolveState(
+  offsetY: number,
+  height: number,
+  velocityY: number,
+  peekHeight: number,
+  fullHeight: number,
+  currentState: HomeSheetState,
+): HomeSheetState {
+  const wantsOpen = offsetY <= -OPEN_DISTANCE || velocityY <= -OPEN_VELOCITY;
+  const wantsClose = offsetY >= OPEN_DISTANCE || velocityY >= OPEN_VELOCITY;
+  const visualState = getVisualState(height, peekHeight, fullHeight);
+  const collapsedToPeekThreshold = (COLLAPSED_HEIGHT + peekHeight) / 2;
+
+  if (currentState === 'collapsed') {
+    if (!wantsOpen) {
+      return 'collapsed';
+    }
+
+    return height >= (peekHeight + fullHeight) / 2 ? 'full' : 'peek';
+  }
+
+  if (currentState === 'peek') {
+    if (wantsOpen) {
+      return 'full';
+    }
+
+    if (wantsClose) {
+      return 'collapsed';
+    }
+
+    return visualState;
+  }
+
+  if (wantsClose) {
+    return height <= collapsedToPeekThreshold ? 'collapsed' : 'peek';
+  }
+
+  return 'full';
+}
+
+function getStageProgress(
+  height: number,
+  peekHeight: number,
+  fullHeight: number,
+) {
+  if (peekHeight <= COLLAPSED_HEIGHT || fullHeight <= peekHeight) {
+    return 0;
+  }
+
+  if (height <= peekHeight) {
+    return clamp(
+      ((height - COLLAPSED_HEIGHT) / (peekHeight - COLLAPSED_HEIGHT)) * 0.5,
+      0,
+      0.5,
+    );
+  }
+
+  return 0.5 + clamp((height - peekHeight) / (fullHeight - peekHeight), 0, 1) * 0.5;
 }
 
 function PeekSheetContent({

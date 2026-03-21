@@ -31,6 +31,9 @@ type JournalRendererProps = {
   content: string;
   photos: string[];
   onPhotoClick: (url: string) => void;
+  dailyAchievement?: string | null;
+  bestPhotoUrl?: string | null;
+  entryType?: 'daily' | 'weekly';
 };
 
 export function JournalRenderer({
@@ -38,17 +41,63 @@ export function JournalRenderer({
   content,
   photos,
   onPhotoClick,
+  dailyAchievement,
+  bestPhotoUrl,
+  entryType = 'daily',
 }: JournalRendererProps) {
   if (status === 'generating') {
     return <QuillJournalLoader />;
   }
 
-  const blocks = content.split(/\n\n+/).filter(Boolean);
+  // Strip <Insights> blocks (backend-only, hidden from user)
+  const cleanedContent = content
+    .replace(/<Insights>[\s\S]*?<\/Insights>/g, '')
+    .replace(/<daily_achievement>[\s\S]*?<\/daily_achievement>/g, '')
+    .replace(/<best_photo>[\s\S]*?<\/best_photo>/g, '')
+    .trim();
+
+  const blocks = cleanedContent.split(/\n\n+/).filter(Boolean);
   const blockComponents = createMarkdownComponents(false);
   const outroComponents = createMarkdownComponents(true);
 
   return (
     <div className="relative pb-[15vh]">
+      {/* Best Photo Hero */}
+      {bestPhotoUrl ? (
+        <motion.button
+          type="button"
+          variants={itemVariants}
+          initial="hidden"
+          animate="visible"
+          whileTap={{ scale: 0.97 }}
+          onClick={() => onPhotoClick(bestPhotoUrl)}
+          className="block w-full mb-4"
+        >
+          <img
+            src={bestPhotoUrl}
+            alt=""
+            className="w-full aspect-[16/9] object-cover rounded-b-2xl"
+          />
+        </motion.button>
+      ) : null}
+
+      {/* Daily Achievement Banner */}
+      {dailyAchievement ? (
+        <motion.div
+          variants={itemVariants}
+          initial="hidden"
+          animate="visible"
+          className="mx-6 mb-6 px-4 py-3 rounded-2xl bg-white/5 border border-white/8 text-center"
+        >
+          <p className="font-sans text-[10px] uppercase tracking-[0.2em] text-film-500 mb-1">
+            {entryType === 'weekly' ? 'weekly highlight' : 'greatest achievement today'}
+          </p>
+          <p className="font-serif text-base text-film-900 font-medium">
+            {dailyAchievement}
+          </p>
+        </motion.div>
+      ) : null}
+
       <motion.div
         variants={containerVariants}
         initial="hidden"
