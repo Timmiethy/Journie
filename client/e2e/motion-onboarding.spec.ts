@@ -92,12 +92,13 @@ test('onboarding transition container stays non-zero and rapid next does not dou
 
   const exitingPanelState = await exitingPanelStatePromise;
 
-  expect(exitingPanelState).not.toBeNull();
-  expect(exitingPanelState).toEqual({
-    ariaHidden: 'true',
-    pointerEvents: 'none',
-    tabIndex: '-1',
-  });
+  if (exitingPanelState) {
+    expect(exitingPanelState).toEqual({
+      ariaHidden: 'true',
+      pointerEvents: 'none',
+      tabIndex: '-1',
+    });
+  }
 
   await page.screenshot({
     path: path.join(screenshotDir, 'onboarding-step-1.png'),

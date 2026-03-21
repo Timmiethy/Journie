@@ -247,7 +247,7 @@ export function OnboardingPage() {
                 onClick={() => setPersona((p) => ({ ...p, writing_style: s }))}
               >
                 <span className="capitalize">{s}</span>
-                <span className="block font-serif text-sm italic text-film-500 mt-1">
+                <span className="mt-1 block font-sans text-sm italic text-film-500">
                   {WRITING_SAMPLES[s]}
                 </span>
               </TextLinkOption>
@@ -356,10 +356,10 @@ export function OnboardingPage() {
                   key={t}
                   type="button"
                   onClick={() => setPersona((p) => ({ ...p, mbti: p.mbti === t ? null : t }))}
-                  className={`rounded-2xl border py-2.5 text-center font-sans text-sm font-bold transition-[background-color,border-color,color,transform] duration-150 ${
+                    className={`rounded-2xl border py-2.5 text-center font-sans text-sm font-bold transition-[background-color,border-color,color,transform] duration-150 ${
                     persona.mbti === t
-                      ? 'border-film-900 bg-film-900 text-abyss-900 shadow-[0_14px_32px_rgba(245,245,245,0.08)]'
-                      : 'border-abyss-700 bg-abyss-900/60 text-film-900 hover:border-film-700 hover:bg-abyss-800/80'
+                      ? 'border-white/14 bg-white/[0.12] text-film-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_38px_rgba(0,0,0,0.28)] backdrop-blur-xl'
+                      : 'border-white/8 bg-white/[0.03] text-film-900 hover:border-white/12 hover:bg-white/[0.06]'
                   }`}
                   {...tapMotionProps}
                 >
@@ -462,7 +462,7 @@ export function OnboardingPage() {
               value={contextText}
               onChange={(e) => setContextText(e.target.value)}
               placeholder="e.g., I'm Tan, a CS student who lives on cà phê sữa đá..."
-              className="min-h-[120px] w-full rounded-[22px] border border-abyss-700 bg-abyss-900/60 px-4 py-4 text-lg text-film-900 placeholder:text-film-500 focus:outline-none focus:border-film-700 resize-none font-serif transition-colors duration-200"
+              className="min-h-[120px] w-full resize-none rounded-[22px] border border-abyss-700 bg-abyss-900/60 px-4 py-4 font-sans text-base text-film-900 placeholder:text-film-500 transition-colors duration-200 focus:border-film-700 focus:outline-none"
             />
             <div className="mt-4 text-center">
               <TextButton
@@ -481,7 +481,7 @@ export function OnboardingPage() {
       case 10:
         return (
           <StepShell question="this is how your journal will sound">
-            <p className="font-serif text-base leading-relaxed text-film-900 italic max-w-[85%] mx-auto text-center py-8 border-y border-abyss-600">
+            <p className="mx-auto max-w-[85%] border-y border-abyss-600 py-8 text-center font-sans text-base leading-relaxed italic text-film-900">
               {getPreviewText()}
             </p>
             {error && (
@@ -606,7 +606,7 @@ function StepShell({
 }) {
   return (
     <div className="mx-auto w-full">
-      <h2 className="font-serif text-[2rem] font-medium leading-tight text-film-900 text-center mb-8">
+      <h2 className="mb-8 text-center font-sans text-[1.85rem] font-medium leading-tight text-film-900 sm:text-[2rem]">
         {question}
       </h2>
       {children}
@@ -629,8 +629,8 @@ function TextLinkOption({
       onClick={onClick}
       className={`block w-full rounded-[22px] border px-4 py-4 text-left font-sans text-base transition-[background-color,border-color,color,transform] duration-150 ${
         selected
-          ? 'border-film-900 bg-film-900 text-abyss-900 shadow-[0_18px_40px_rgba(245,245,245,0.08)]'
-          : 'border-abyss-700 bg-abyss-900/55 text-film-900 hover:border-film-700 hover:bg-abyss-800/80'
+          ? 'border-white/14 bg-white/[0.12] text-film-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur-xl'
+          : 'border-white/8 bg-white/[0.03] text-film-900 hover:border-white/12 hover:bg-white/[0.06]'
       }`}
       {...tapMotionProps}
     >
@@ -665,10 +665,10 @@ function Pill({
       disabled={disabled && !selected}
       className={`rounded-full border px-4 py-2.5 font-sans text-sm transition-[background-color,border-color,color,opacity,transform] duration-150 capitalize ${
         selected
-          ? 'border-film-900 bg-film-900 text-abyss-900 shadow-[0_14px_32px_rgba(245,245,245,0.08)]'
+          ? 'border-white/14 bg-white/[0.12] text-film-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_16px_34px_rgba(0,0,0,0.26)] backdrop-blur-xl'
           : disabled
             ? 'border-abyss-700 text-film-500 opacity-30 cursor-not-allowed pointer-events-none'
-            : 'border-abyss-700 bg-abyss-900/60 text-film-900 hover:border-film-700 hover:bg-abyss-800/80'
+            : 'border-white/8 bg-white/[0.03] text-film-900 hover:border-white/12 hover:bg-white/[0.06]'
       }`}
       {...tapMotionProps}
     >

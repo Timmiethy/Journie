@@ -10,6 +10,10 @@ export default defineConfig({
   workers: 1,
   use: {
     baseURL: testFrontendUrl,
+    permissions: ['camera'],
+    launchOptions: {
+      args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
+    },
   },
   webServer: {
     command: 'pnpm run dev',

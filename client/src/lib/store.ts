@@ -16,14 +16,14 @@ export interface CalendarPopoverState {
 }
 
 export const AURA_COLOR: Record<Mood, string> = {
-  great: '#2EEA99',
-  good: '#FF8A4C',
-  neutral: '#8A9BB4',
-  low: '#8D7B99',
-  rough: '#E03131',
+  great: '#63DDB6',
+  good: '#F2A46D',
+  neutral: '#8DB8B2',
+  low: '#7D94BC',
+  rough: '#E56E72',
 };
 
-const DEFAULT_AURA = '#8A9BB4';
+const DEFAULT_AURA = '#F2A46D';
 
 function getAuraFromMoments(moments: MomentWithPhotos[]): string {
   const lastMoment = moments[moments.length - 1];

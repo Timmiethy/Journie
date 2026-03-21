@@ -1,18 +1,23 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Toaster } from 'sonner';
 import { supabase } from './lib/supabase';
 import { useStore } from './lib/store';
 import { CalendarDayPopover } from './components/calendar-day-popover';
+import { LoadingScreen } from './components/loading-screen';
 
-import { AuthPage }            from './pages/auth';
-import { PostAuthResolverPage } from './pages/post-auth-resolver';
-import { OnboardingPage }      from './pages/onboarding';
-import { HomePage }            from './pages/home';
-import { MomentDetailPage }    from './pages/moment-detail';
-import { TimelinePage }        from './pages/timeline';
-import { JournalViewPage }     from './pages/journal-view';
-import { JournalHistoryPage }  from './pages/journal-history';
+const AuthPage = lazy(async () => ({ default: (await import('./pages/auth')).AuthPage }));
+const PostAuthResolverPage = lazy(async () => ({
+  default: (await import('./pages/post-auth-resolver')).PostAuthResolverPage,
+}));
+const OnboardingPage = lazy(async () => ({ default: (await import('./pages/onboarding')).OnboardingPage }));
+const HomePage = lazy(async () => ({ default: (await import('./pages/home')).HomePage }));
+const MomentDetailPage = lazy(async () => ({ default: (await import('./pages/moment-detail')).MomentDetailPage }));
+const TimelinePage = lazy(async () => ({ default: (await import('./pages/timeline')).TimelinePage }));
+const JournalViewPage = lazy(async () => ({ default: (await import('./pages/journal-view')).JournalViewPage }));
+const JournalHistoryPage = lazy(async () => ({
+  default: (await import('./pages/journal-history')).JournalHistoryPage,
+}));
 
 function ProtectedRoute() {
   const userId = useStore((s) => s.userId);
@@ -31,7 +36,13 @@ function ProtectedRoute() {
   }, []);
 
   if (checking) {
-    return <div className="min-h-screen bg-abyss-900" />;
+    return (
+      <LoadingScreen
+        eyebrow="restoring your session"
+        title="Checking your Journie session."
+        description="We are restoring the right route and mood before you land, not flashing a blank screen."
+      />
+    );
   }
 
   return userId ? <Outlet /> : <Navigate to="/auth" replace />;
@@ -70,7 +81,7 @@ export default function App() {
             background: '#0A0A0A',
             border: '1px solid #262626',
             color: '#F5F5F5',
-            fontFamily: 'Satoshi, system-ui, sans-serif',
+            fontFamily: 'Inter, system-ui, sans-serif',
             fontSize: '13px',
             borderRadius: '0',
           },
@@ -82,21 +93,31 @@ export default function App() {
           You're offline
         </div>
       )}
-      <Routes>
-        <Route path="/auth" element={<AuthPage />} />
-        <Route path="/auth/resolver" element={<PostAuthResolverPage />} />
+      <Suspense
+        fallback={
+          <LoadingScreen
+            eyebrow="loading the next scene"
+            title="Bringing in the next page."
+            description="Large routes now stream in deliberately so the app stays polished instead of blocking on a blank shell."
+          />
+        }
+      >
+        <Routes>
+          <Route path="/auth" element={<AuthPage />} />
+          <Route path="/auth/resolver" element={<PostAuthResolverPage />} />
 
-        <Route element={<ProtectedRoute />}>
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          <Route path="/home" element={<HomePage />} />
-          <Route path="/moments/new" element={<MomentDetailPage />} />
-          <Route path="/timeline" element={<TimelinePage />} />
-          <Route path="/journal/:date" element={<JournalViewPage />} />
-          <Route path="/journals" element={<JournalHistoryPage />} />
-        </Route>
+          <Route element={<ProtectedRoute />}>
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/home" element={<HomePage />} />
+            <Route path="/moments/new" element={<MomentDetailPage />} />
+            <Route path="/timeline" element={<TimelinePage />} />
+            <Route path="/journal/:date" element={<JournalViewPage />} />
+            <Route path="/journals" element={<JournalHistoryPage />} />
+          </Route>
 
-        <Route path="*" element={<Navigate to="/home" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/home" replace />} />
+        </Routes>
+      </Suspense>
       <CalendarDayPopover />
     </BrowserRouter>
   );

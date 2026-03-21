@@ -79,7 +79,7 @@ test('journie motion flow renders and navigates without console errors', async (
   await page.getByRole('button', { name: /looks good, let's go/i }).click();
   await page.waitForURL('**/home');
 
-  await expect(page.getByText(/good/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: /^journal$/i })).toBeVisible();
   await page.screenshot({ path: path.join(validationDirectory, '02-home.png'), fullPage: true });
 
   await page
@@ -94,8 +94,9 @@ test('journie motion flow renders and navigates without console errors', async (
   await page.getByPlaceholder("what's happening?").fill('Coffee, code, and a deterministic motion test.');
   await page.screenshot({ path: path.join(validationDirectory, '04-moment-context.png'), fullPage: true });
   await page.getByRole('button', { name: /save moment/i }).click();
+  await page.getByText(/^review$/i).waitFor({ state: 'hidden', timeout: 15000 });
 
-  const startJournalingButton = page.getByRole('button', { name: /start journaling/i });
+  const startJournalingButton = page.getByRole('button', { name: /start journal/i });
   await expect(startJournalingButton).toBeVisible();
   await startJournalingButton.click();
   await page.waitForURL('**/timeline');
@@ -119,6 +120,9 @@ test('journie motion flow renders and navigates without console errors', async (
   const generateResponse = await generateResponsePromise;
   expect([200, 202]).toContain(generateResponse.status());
   await page.waitForURL(/\/journal\/\d{4}-\d{2}-\d{2}$/);
+  const journalDateMatch = page.url().match(/\/journal\/(\d{4}-\d{2}-\d{2})$/);
+  expect(journalDateMatch).not.toBeNull();
+  const journalDate = journalDateMatch?.[1] ?? '';
   await expect(
     page.getByRole('button', { name: /confirm & save/i }),
   ).toBeVisible({ timeout: 60000 });
@@ -150,16 +154,40 @@ test('journie motion flow renders and navigates without console errors', async (
 
   const confirmButton = page.getByRole('button', { name: /confirm & save/i });
   if (await confirmButton.isVisible()) {
+    const confirmResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes(`/api/journal/${journalDate}`) &&
+        response.request().method() === 'PATCH',
+    );
     await confirmButton.click();
+    const confirmResponse = await confirmResponsePromise;
+    expect(confirmResponse.ok()).toBeTruthy();
   }
   await page.goto('/journals');
-  await expect(page.getByText(/archive/i)).toBeVisible();
-  await expect(page.getByText(/recent/i)).toBeVisible();
+  await expect(page.getByText(/^archive$/i).first()).toBeVisible();
+  await expect(page.getByText(/^recent$/i)).toBeVisible();
+  await expect(page.getByText(/^monthly archive$/i)).toHaveCount(0);
+  await expect(page.getByText(/the most recent confirmed days you can reopen immediately\./i)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^previous month$/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^next month$/i })).toBeVisible();
   await page.screenshot({ path: path.join(validationDirectory, '07-history.png'), fullPage: true });
 
-  await page.getByRole('button', { name: new RegExp(`${new Date().getDate()}`) }).first().click();
-  await expect(page.getByText(/^day$/i).first()).toBeVisible();
-  await page.screenshot({ path: path.join(validationDirectory, '08-history-popover.png'), fullPage: true });
+  const archiveDateLabel = new Date(`${journalDate}T12:00:00`).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+  });
+  const savedArchiveButton = page.getByRole('button', {
+    name: new RegExp(`^${archiveDateLabel.replace(' ', '\\s+')}`),
+  });
+  await expect(savedArchiveButton).toBeVisible({ timeout: 15000 });
+  await expect(savedArchiveButton).toHaveAttribute('data-testid', 'recent-entry-card');
+  const thumbBox = await page.getByTestId('recent-entry-thumb').first().boundingBox();
+  expect(thumbBox).not.toBeNull();
+  expect(thumbBox?.width ?? 0).toBeGreaterThanOrEqual(54);
+  expect(thumbBox?.height ?? 0).toBeGreaterThanOrEqual(54);
+  await savedArchiveButton.click();
+  await page.waitForURL(new RegExp(`/journal/${journalDate}$`));
+  await page.screenshot({ path: path.join(validationDirectory, '08-history-reopen.png'), fullPage: true });
 
   fs.writeFileSync(
     path.join(validationDirectory, 'smoke-console.json'),

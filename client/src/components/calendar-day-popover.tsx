@@ -6,6 +6,8 @@ import { spring, tapMotionProps, withReducedMotion } from '../lib/motion';
 import { useStore } from '../lib/store';
 import { usePrefersReducedMotion } from '../lib/use-prefers-reduced-motion';
 import { ActionButton } from './ui/action-button';
+import { createJournalRouteState } from '../lib/journal-navigation';
+import { preloadJournalViewPage } from '../lib/route-preloaders';
 
 export function CalendarDayPopover() {
   const navigate = useNavigate();
@@ -86,7 +88,7 @@ export function CalendarDayPopover() {
       ref={popoverRef}
       key={calendarPopover.date}
       data-calendar-popover="true"
-      className="fixed z-[100] overflow-hidden rounded-[24px] border border-film-900/12 bg-[#101010] shadow-[0_28px_80px_rgba(0,0,0,0.55)] ring-1 ring-white/5 backdrop-blur-md"
+      className="fixed z-[100] overflow-hidden rounded-[26px] border border-white/10 bg-[#101010] shadow-[0_28px_80px_rgba(0,0,0,0.55)] ring-1 ring-white/5 backdrop-blur-md"
       initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 8 }}
       animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
       transition={withReducedMotion(Boolean(shouldReduceMotion), spring)}
@@ -97,9 +99,9 @@ export function CalendarDayPopover() {
         transform: position.translateUp ? 'translateY(-100%)' : undefined,
       }}
     >
-      <div className="flex items-center justify-between border-b border-abyss-700/80 px-4 py-3">
+      <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
         <div>
-          <p className="font-sans text-[10px] uppercase tracking-[0.2em] text-film-500">day</p>
+          <p className="font-sans text-[10px] uppercase tracking-[0.2em] text-film-500">day snapshot</p>
           <p className="font-sans text-sm text-film-900 mt-1">{calendarPopover.label}</p>
         </div>
         <m.button type="button" onClick={clearCalendarPopover} {...tapMotionProps}>
@@ -114,7 +116,7 @@ export function CalendarDayPopover() {
           className="h-28 w-full object-cover"
         />
       ) : (
-        <div className="h-20 w-full bg-abyss-800/90" />
+        <div className="h-20 w-full bg-[linear-gradient(135deg,rgba(242,164,109,0.16),rgba(141,184,178,0.08),rgba(10,10,10,0.95))]" />
       )}
 
       <div className="px-4 py-4 space-y-4">
@@ -124,8 +126,12 @@ export function CalendarDayPopover() {
 
         {calendarPopover.hasJournal ? (
           <ActionButton
+            onMouseEnter={() => void preloadJournalViewPage()}
+            onFocus={() => void preloadJournalViewPage()}
             onClick={() => {
-              navigate(`/journal/${calendarPopover.date}`);
+              navigate(`/journal/${calendarPopover.date}`, {
+                state: createJournalRouteState('history'),
+              });
               window.requestAnimationFrame(() => {
                 clearCalendarPopover();
               });

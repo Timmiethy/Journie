@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { LayoutGroup, m } from 'framer-motion';
 import {
   endOfMonth,
@@ -6,7 +6,6 @@ import {
   eachDayOfInterval,
   format,
   isSameMonth,
-  isToday,
   startOfMonth,
   startOfWeek,
 } from 'date-fns';
@@ -19,11 +18,6 @@ type CalendarViewProps = {
   entries: JournalListEntry[];
 };
 
-type WeekSegment = {
-  start: number;
-  end: number;
-};
-
 export function CalendarView({ currentMonth, entries }: CalendarViewProps) {
   const calendarPopover = useStore((state) => state.calendarPopover);
   const setCalendarPopover = useStore((state) => state.setCalendarPopover);
@@ -33,6 +27,32 @@ export function CalendarView({ currentMonth, entries }: CalendarViewProps) {
     () => new Map(entries.map((entry) => [entry.day_date, entry])),
     [entries],
   );
+
+  useEffect(() => {
+    if (!calendarPopover) {
+      return;
+    }
+
+    const entry = entryMap.get(calendarPopover.date);
+    const nextPreview = entry?.content?.split('\n')?.[0] ?? 'No journal for this day yet.';
+    const nextPhotoUrl = entry?.first_photo_url ?? null;
+    const hasJournal = Boolean(entry);
+
+    if (
+      calendarPopover.hasJournal === hasJournal &&
+      calendarPopover.preview === nextPreview &&
+      calendarPopover.photoUrl === nextPhotoUrl
+    ) {
+      return;
+    }
+
+    setCalendarPopover({
+      ...calendarPopover,
+      hasJournal,
+      preview: nextPreview,
+      photoUrl: nextPhotoUrl,
+    });
+  }, [calendarPopover, entryMap, setCalendarPopover]);
 
   const weeks = useMemo(() => {
     const monthStart = startOfMonth(currentMonth);
@@ -81,43 +101,25 @@ export function CalendarView({ currentMonth, entries }: CalendarViewProps) {
 
   return (
     <LayoutGroup id="calendar-history">
-      <div className="grid grid-cols-7 gap-0 px-6">
+      <div className="grid grid-cols-7 gap-0">
         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
           <div
             key={day}
-            className="py-2 text-center font-sans text-[10px] uppercase tracking-wide text-film-500"
+            className="pb-4 text-center font-sans text-[10px] uppercase tracking-[0.2em] text-film-700"
           >
             {day}
           </div>
         ))}
       </div>
 
-      <div className="px-6 space-y-1">
+      <div className="space-y-1">
         {weeks.map((week, weekIndex) => {
-          const segments = getWeekSegments(week, entryMap);
-
           return (
             <div key={`week-${weekIndex}`} className="relative grid grid-cols-7 gap-0">
-              {segments.map((segment, segmentIndex) => (
-                <m.div
-                  key={`segment-${segmentIndex}`}
-                  layout
-                  layoutId={`calendar-streak-week-${weekIndex}-${segmentIndex}`}
-                  transition={spring}
-                  data-streak-segment="true"
-                  className="absolute bottom-2 top-2 rounded-full bg-aura-rough/15"
-                  style={{
-                    left: `calc(${(segment.start / 7) * 100}% + 2px)`,
-                    width: `calc(${((segment.end - segment.start + 1) / 7) * 100}% - 4px)`,
-                  }}
-                />
-              ))}
-
               {week.map((day) => {
                 const iso = format(day, 'yyyy-MM-dd');
                 const entry = entryMap.get(iso);
                 const inMonth = isSameMonth(day, currentMonth);
-                const today = isToday(day);
                 const isSelected = calendarPopover?.date === iso;
 
                 return (
@@ -128,33 +130,36 @@ export function CalendarView({ currentMonth, entries }: CalendarViewProps) {
                     aria-label={`Open ${iso}`}
                     aria-pressed={isSelected}
                     data-calendar-day={iso}
-                    className="relative flex h-11 flex-col items-center justify-center"
+                    className="relative flex h-12 items-center justify-center"
                     {...tapMotionProps}
                   >
-                    {isSelected ? (
-                      <m.div
-                        layoutId="calendar-active-day-pill"
-                        transition={spring}
-                        className="absolute inset-1 rounded-full border border-film-900/35 bg-film-900/10"
-                      />
-                    ) : null}
-                    <span
-                      className={`relative z-10 font-sans text-sm ${
-                        !inMonth
-                          ? 'text-abyss-600'
-                          : today
-                            ? 'text-film-900 font-medium'
-                            : 'text-film-700'
-                      }`}
-                    >
-                      {format(day, 'd')}
+                    <span className="relative flex h-10 w-10 items-center justify-center">
+                      {isSelected ? (
+                        <m.span
+                          layoutId="calendar-active-day-pill"
+                          transition={spring}
+                          data-calendar-selected-circle="true"
+                          className="absolute inset-0 rounded-full bg-film-900"
+                        />
+                      ) : null}
+                      <span
+                        className={`relative z-10 font-sans text-lg ${
+                          !inMonth
+                            ? 'text-abyss-600'
+                            : isSelected
+                              ? 'text-abyss-900'
+                              : 'text-film-900'
+                        }`}
+                      >
+                        {format(day, 'd')}
+                      </span>
+                      {entry ? (
+                        <span
+                          data-calendar-entry-dot="true"
+                          className="absolute bottom-1 h-1 w-1 rounded-full bg-aura-neutral"
+                        />
+                      ) : null}
                     </span>
-                    {entry ? (
-                      <div
-                        className="h-1 w-1 rounded-full absolute bottom-1 z-10"
-                        style={{ backgroundColor: '#FF8A4C' }}
-                      />
-                    ) : null}
                   </m.button>
                 );
               })}
@@ -164,28 +169,4 @@ export function CalendarView({ currentMonth, entries }: CalendarViewProps) {
       </div>
     </LayoutGroup>
   );
-}
-
-function getWeekSegments(
-  week: Date[],
-  entryMap: Map<string, JournalListEntry>,
-): WeekSegment[] {
-  const segments: WeekSegment[] = [];
-  let start = -1;
-
-  week.forEach((day, index) => {
-    const hasJournal = entryMap.has(format(day, 'yyyy-MM-dd'));
-    if (hasJournal && start === -1) {
-      start = index;
-    }
-
-    const atEnd = index === week.length - 1;
-    if ((!hasJournal || atEnd) && start !== -1) {
-      const end = hasJournal && atEnd ? index : index - 1;
-      segments.push({ start, end });
-      start = -1;
-    }
-  });
-
-  return segments;
 }

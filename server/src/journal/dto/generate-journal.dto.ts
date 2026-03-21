@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString, Matches } from 'class-validator';
+import { IsArray, IsBoolean, IsOptional, IsString, Matches } from 'class-validator';
 
 export class GenerateJournalDto {
   @IsString()
@@ -8,4 +8,9 @@ export class GenerateJournalDto {
   @IsOptional()
   @IsBoolean()
   regenerate?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  momentIds?: string[];
 }

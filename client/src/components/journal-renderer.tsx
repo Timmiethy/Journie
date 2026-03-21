@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { fadeTransition, spring } from '../lib/motion';
+import { useStore } from '../lib/store';
+import { usePrefersReducedMotion } from '../lib/use-prefers-reduced-motion';
 import type { JournalEntry } from '../types';
 
 const containerVariants = {
@@ -24,8 +26,6 @@ const itemVariants = {
   },
 };
 
-const SKELETON_BLOCKS = [112, 88, 104, 92, 124];
-
 type JournalRendererProps = {
   status: JournalEntry['status'];
   content: string;
@@ -40,43 +40,7 @@ export function JournalRenderer({
   onPhotoClick,
 }: JournalRendererProps) {
   if (status === 'generating') {
-    return (
-      <div className="relative px-6 pt-6 pb-[15vh]">
-        <div className="mb-6 rounded-[24px] border border-abyss-700/75 bg-abyss-900/72 px-5 py-5">
-          <p className="font-sans text-[10px] uppercase tracking-[0.2em] text-film-500">
-            generating
-          </p>
-          <p className="mt-2 font-serif text-xl text-film-900">
-            We&apos;re shaping today&apos;s journal from your timeline.
-          </p>
-          <p className="mt-2 font-sans text-sm leading-6 text-film-700">
-            You can stay here. The draft appears as soon as the backend finishes.
-          </p>
-        </div>
-        <div className="space-y-4">
-          {SKELETON_BLOCKS.map((height, index) => (
-            <div
-              key={height}
-              className="relative overflow-hidden rounded-[22px] border border-abyss-700/70 bg-abyss-800/78"
-              data-journal-skeleton="true"
-              style={{ height }}
-            >
-              <motion.div
-                aria-hidden="true"
-                className="absolute inset-y-0 -left-1/2 w-1/2 bg-gradient-to-r from-transparent via-film-900/10 to-transparent"
-                animate={{ x: ['-20%', '220%'] }}
-                transition={{
-                  duration: 1.2 + index * 0.08,
-                  repeat: Infinity,
-                  repeatDelay: 0.1,
-                }}
-              />
-            </div>
-          ))}
-        </div>
-        <BottomFade />
-      </div>
-    );
+    return <QuillJournalLoader />;
   }
 
   const blocks = content.split(/\n\n+/).filter(Boolean);
@@ -148,6 +112,162 @@ export function JournalRenderer({
         ) : null}
       </motion.div>
 
+      <BottomFade />
+    </div>
+  );
+}
+
+function QuillJournalLoader() {
+  const aura = useStore((state) => state.currentAura);
+  const shouldReduceMotion = usePrefersReducedMotion();
+
+  return (
+    <div className="relative px-4 pb-[14vh] pt-5 sm:px-6 sm:pt-6">
+      <div className="mx-auto max-w-[21rem] text-center">
+        <p className="font-sans text-[10px] uppercase tracking-[0.2em] text-film-500">
+          generating
+        </p>
+        <p className="mt-2 font-sans text-lg font-medium leading-tight text-film-900 sm:text-xl">
+          Your journal is taking shape.
+        </p>
+        <p className="mt-2 font-sans text-sm leading-6 text-film-700">
+          We&apos;re shaping the draft around your moments and voice.
+        </p>
+        <div className="mt-6 overflow-hidden rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015)_24%,rgba(5,5,5,0.08)_100%)] px-5 py-7 shadow-[0_22px_60px_rgba(0,0,0,0.24)]">
+          <div
+            className="mx-auto flex h-[11.5rem] max-w-[14rem] items-center justify-center rounded-[24px]"
+            style={{
+              background: `radial-gradient(circle at 50% 38%, ${aura}1c 0%, rgba(255,255,255,0.02) 46%, transparent 78%)`,
+            }}
+          >
+            <motion.svg
+              viewBox="0 0 140 140"
+              className="w-[8.75rem]"
+              role="img"
+              aria-label="Journal writing animation"
+              initial={shouldReduceMotion ? false : { opacity: 0.88, scale: 0.98, rotate: -4 }}
+              animate={
+                shouldReduceMotion
+                  ? { opacity: 0.96, scale: 1, rotate: 0 }
+                  : {
+                      opacity: [0.72, 1, 0.78],
+                      scale: [0.97, 1.03, 0.99],
+                      rotate: [-4, 1, 4, -4],
+                      x: [0, 2, -2, 0],
+                      y: [0, -2, 1, 0],
+                    }
+              }
+              transition={
+                shouldReduceMotion
+                  ? { duration: 0.2 }
+                  : {
+                      duration: 3.2,
+                      repeat: Infinity,
+                      ease: 'easeInOut',
+                    }
+              }
+            >
+              <path
+                d="M104 24C79 24 57 35 42 51C28 66 23 87 24 103C40 104 61 99 77 86C97 70 109 48 111 27C111 25 109 24 104 24Z"
+                fill="none"
+                stroke="rgba(255,255,255,0.1)"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="4"
+              />
+              <path
+                d="M46 97L109 34"
+                fill="none"
+                stroke="rgba(255,255,255,0.08)"
+                strokeLinecap="round"
+                strokeWidth="4"
+              />
+              <motion.path
+                d="M104 24C79 24 57 35 42 51C28 66 23 87 24 103C40 104 61 99 77 86C97 70 109 48 111 27C111 25 109 24 104 24Z"
+                fill="none"
+                stroke={aura}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="4"
+                initial={shouldReduceMotion ? { opacity: 0.95, pathLength: 1 } : { opacity: 0.5, pathLength: 0.42 }}
+                animate={
+                  shouldReduceMotion
+                    ? { opacity: 0.95, pathLength: 1 }
+                    : {
+                        opacity: [0.48, 1, 0.56],
+                        pathLength: [0.42, 1, 0.52],
+                      }
+                }
+                transition={
+                  shouldReduceMotion
+                    ? { duration: 0.2 }
+                    : {
+                        duration: 2.4,
+                        repeat: Infinity,
+                        ease: 'easeInOut',
+                      }
+                }
+              />
+              <motion.path
+                d="M46 97L109 34"
+                fill="none"
+                stroke={aura}
+                strokeLinecap="round"
+                strokeWidth="4"
+                initial={shouldReduceMotion ? { opacity: 0.92, pathLength: 1 } : { opacity: 0.42, pathLength: 0.28 }}
+                animate={
+                  shouldReduceMotion
+                    ? { opacity: 0.92, pathLength: 1 }
+                    : {
+                        opacity: [0.4, 0.92, 0.48],
+                        pathLength: [0.28, 1, 0.36],
+                      }
+                }
+                transition={
+                  shouldReduceMotion
+                    ? { duration: 0.2 }
+                    : {
+                        duration: 2.4,
+                        delay: 0.15,
+                        repeat: Infinity,
+                        ease: 'easeInOut',
+                      }
+                }
+              />
+              <motion.path
+                d="M58 79C68 69 77 57 87 43"
+                fill="none"
+                stroke={aura}
+                strokeLinecap="round"
+                strokeWidth="3"
+                initial={shouldReduceMotion ? { opacity: 0.78, pathLength: 1 } : { opacity: 0.22, pathLength: 0.12 }}
+                animate={
+                  shouldReduceMotion
+                    ? { opacity: 0.78, pathLength: 1 }
+                    : {
+                        opacity: [0.18, 0.62, 0.22],
+                        pathLength: [0.12, 1, 0.24],
+                      }
+                }
+                transition={
+                  shouldReduceMotion
+                    ? { duration: 0.2 }
+                    : {
+                        duration: 2.4,
+                        delay: 0.28,
+                        repeat: Infinity,
+                        ease: 'easeInOut',
+                      }
+                }
+              />
+            </motion.svg>
+          </div>
+
+          <p className="mt-3 font-sans text-xs uppercase tracking-[0.22em] text-film-500">
+            tuning voice and sequence
+          </p>
+        </div>
+      </div>
       <BottomFade />
     </div>
   );

@@ -64,14 +64,30 @@ test('component 5 calendar renders streaks and a single root popover safely at t
   await loginToHome(page, email, password);
   await page.goto('/journals');
 
-  await expect(page.locator('[data-streak-segment="true"]')).toHaveCount(1);
+  await expect(page.getByText(/^monthly archive$/i)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^previous month$/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^next month$/i })).toBeVisible();
+  await expect(page.locator('[data-streak-segment="true"]')).toHaveCount(0);
 
   const edgeDate = format(sunday, 'yyyy-MM-dd');
   const middleDate = format(saturday, 'yyyy-MM-dd');
   const edgeDay = page.locator(`[data-calendar-day="${edgeDate}"]`);
   const middleDay = page.locator(`[data-calendar-day="${middleDate}"]`);
   await expect(edgeDay).toBeVisible();
+  await expect(edgeDay.locator('[data-calendar-entry-dot="true"]')).toBeVisible();
   await edgeDay.click();
+  await expect(edgeDay.locator('[data-calendar-selected-circle="true"]')).toBeVisible();
+
+  const selectedCircleStyles = await edgeDay.locator('[data-calendar-selected-circle="true"]').evaluate((element) => {
+    const styles = window.getComputedStyle(element);
+    return {
+      backgroundColor: styles.backgroundColor,
+      borderRadius: styles.borderRadius,
+    };
+  });
+
+  expect(selectedCircleStyles.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+  expect(Number.parseFloat(selectedCircleStyles.borderRadius)).toBeGreaterThanOrEqual(999);
 
   const popover = page.locator('[data-calendar-popover="true"]');
   await expect(popover).toHaveCount(1);

@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 import { tapMotionProps } from '../lib/motion';
 import { useStore, AURA_COLOR } from '../lib/store';
 import { compressImage, todayISO } from '../lib/utils';
+import { ActionButton, TextButton } from './ui/action-button';
 import type { MomentWithPhotos, Mood } from '../types';
 
 const MOODS: { value: Mood; label: string }[] = [
@@ -19,12 +20,14 @@ const MOODS: { value: Mood; label: string }[] = [
 interface MomentFormProps {
   initialFiles: File[];
   onClose: () => void;
+  onFilesChange?: (files: File[]) => void;
   onSaved?: (moment: MomentWithPhotos) => void;
 }
 
 export function MomentForm({
   initialFiles,
   onClose,
+  onFilesChange,
   onSaved,
 }: MomentFormProps) {
   const [step, setStep] = useState<'review' | 'context'>('review');
@@ -42,6 +45,7 @@ export function MomentForm({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const filesRef = useRef<File[]>(initialFiles);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const addMoreRef = useRef<HTMLInputElement>(null);
@@ -49,6 +53,7 @@ export function MomentForm({
 
   useEffect(() => {
     setFiles(initialFiles);
+    filesRef.current = initialFiles;
     setStep('review');
     setMood(null);
     setText('');
@@ -62,9 +67,16 @@ export function MomentForm({
   useEffect(() => {
     const urls = files.map((file) => URL.createObjectURL(file));
     setPreviews(urls);
+    filesRef.current = files;
 
     return () => urls.forEach(URL.revokeObjectURL);
   }, [files]);
+
+  useEffect(() => {
+    if (files.length === 0) {
+      onClose();
+    }
+  }, [files.length, onClose]);
 
   useEffect(() => {
     const element = textareaRef.current;
@@ -144,11 +156,13 @@ export function MomentForm({
 
     try {
       const compressed = await Promise.all(Array.from(fileList).map(compressImage));
-      setFiles((current) => [...current, ...compressed]);
+      const nextFiles = [...filesRef.current, ...compressed];
+      setFiles(nextFiles);
+      onFilesChange?.(nextFiles);
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'failed to prepare photos');
     }
-  }, []);
+  }, [onFilesChange]);
 
   const handleSave = useCallback(async () => {
     if (!isOnline) return;
@@ -184,7 +198,7 @@ export function MomentForm({
 
   return (
     <>
-      <div className="flex items-center gap-4 px-6 pt-6 pb-4">
+      <div className="flex items-center gap-4 px-4 pt-4 pb-3 sm:px-6 sm:pt-6 sm:pb-4">
         <motion.button
           type="button"
           onClick={onClose}
@@ -201,23 +215,22 @@ export function MomentForm({
 
       <div className="flex-1 overflow-y-auto scrollbar-hide">
         {step === 'review' ? (
-          <div className="px-6 pb-6">
+          <div className="px-4 pb-5 sm:px-6 sm:pb-6">
             <PhotoGrid
               previews={previews}
               uploadFailed={uploadFailed}
               onRemove={(index) => {
-                setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index));
+                const nextFiles = filesRef.current.filter((_, fileIndex) => fileIndex !== index);
+                setFiles(nextFiles);
+                onFilesChange?.(nextFiles);
               }}
             />
 
-            <motion.button
-              type="button"
-              onClick={() => addMoreRef.current?.click()}
-              className="font-sans text-sm text-film-700 underline underline-offset-4 text-center py-4 hover:text-film-900 transition-colors w-full"
-              {...tapMotionProps}
-            >
-              add more photos
-            </motion.button>
+            <div className="py-2 text-center">
+              <TextButton type="button" onClick={() => addMoreRef.current?.click()}>
+                add more photos
+              </TextButton>
+            </div>
 
             <input
               type="file"
@@ -232,22 +245,21 @@ export function MomentForm({
               }}
             />
 
-            <motion.button
+            <ActionButton
               type="button"
               disabled={files.length === 0}
               onClick={() => setStep('context')}
-              className="w-full bg-film-900 text-abyss-900 font-sans font-bold text-sm uppercase tracking-widest py-4 rounded-none hover:bg-film-700 transition-colors disabled:bg-abyss-700 disabled:text-film-500 disabled:cursor-not-allowed mt-2"
-              {...tapMotionProps}
+              className="mt-2 w-full"
             >
               next
-            </motion.button>
+            </ActionButton>
           </div>
         ) : (
-          <div className="pb-6">
-            <p className="font-sans text-xs uppercase tracking-widest text-film-500 mb-4 px-6">
+          <div className="pb-5 sm:pb-6">
+            <p className="mb-3 px-4 font-sans text-[11px] uppercase tracking-widest text-film-500 sm:mb-4 sm:px-6">
               how does this feel?
             </p>
-            <div className="flex items-center justify-between px-8 py-4">
+            <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
               {MOODS.map((currentMood) => {
                 const selected = mood === currentMood.value;
                 const color = AURA_COLOR[currentMood.value];
@@ -281,18 +293,18 @@ export function MomentForm({
               })}
             </div>
 
-            <div className="px-6 mt-4">
+            <div className="mt-3 px-4 sm:mt-4 sm:px-6">
               <textarea
                 ref={textareaRef}
                 value={text}
                 onChange={(event) => setText(event.target.value)}
                 placeholder="what's happening?"
                 rows={1}
-                className="w-full bg-transparent border-b border-abyss-600 py-3 text-film-900 font-serif text-xl placeholder:text-film-500 focus:outline-none focus:border-film-700 transition-colors duration-200 resize-none"
+                className="w-full resize-none border-b border-abyss-600 bg-transparent py-2.5 font-sans text-base text-film-900 placeholder:text-film-500 transition-colors duration-200 focus:border-film-700 focus:outline-none sm:text-lg"
               />
             </div>
 
-            <div className="flex items-center gap-3 px-6 mt-4">
+            <div className="mt-3 flex items-center gap-3 px-4 sm:mt-4 sm:px-6">
               <div className="relative h-11 w-11">
                 {recording && (
                   <motion.div
@@ -331,16 +343,15 @@ export function MomentForm({
               )}
             </div>
 
-            <div className="px-6 mt-8">
-              <motion.button
+            <div className="mt-6 px-4 sm:mt-8 sm:px-6">
+              <ActionButton
                 type="button"
                 disabled={saving || !isOnline}
                 onClick={handleSave}
-                className="w-full bg-film-900 text-abyss-900 font-sans font-bold text-sm uppercase tracking-widest py-4 rounded-none hover:bg-film-700 transition-colors disabled:bg-abyss-700 disabled:text-film-500 disabled:cursor-not-allowed"
-                {...tapMotionProps}
+                className="w-full"
               >
                 {saving ? 'saving...' : 'save moment'}
-              </motion.button>
+              </ActionButton>
             </div>
           </div>
         )}
@@ -369,7 +380,7 @@ function PhotoGrid({
       <div className="relative">
         <img src={previews[0]} alt="" className="w-full aspect-[4/3] object-cover rounded-none" />
         {uploadFailed && <UploadRetryOverlay />}
-        <RemoveButton onClick={() => onRemove(0)} />
+        <RemoveButton onClick={() => onRemove(0)} ariaLabel="Remove photo 1" />
       </div>
     );
   }
@@ -381,7 +392,7 @@ function PhotoGrid({
           <div key={preview} className="relative">
             <img src={preview} alt="" className="aspect-square object-cover w-full rounded-none" />
             {uploadFailed && <UploadRetryOverlay />}
-            <RemoveButton onClick={() => onRemove(index)} />
+            <RemoveButton onClick={() => onRemove(index)} ariaLabel={`Remove photo ${index + 1}`} />
           </div>
         ))}
       </div>
@@ -394,14 +405,14 @@ function PhotoGrid({
         <div className="relative">
           <img src={previews[0]} alt="" className="w-full aspect-[16/9] object-cover rounded-none" />
           {uploadFailed && <UploadRetryOverlay />}
-          <RemoveButton onClick={() => onRemove(0)} />
+          <RemoveButton onClick={() => onRemove(0)} ariaLabel="Remove photo 1" />
         </div>
         <div className="grid grid-cols-2 gap-1">
           {previews.slice(1).map((preview, index) => (
             <div key={preview} className="relative">
               <img src={preview} alt="" className="aspect-square object-cover w-full rounded-none" />
               {uploadFailed && <UploadRetryOverlay />}
-              <RemoveButton onClick={() => onRemove(index + 1)} />
+              <RemoveButton onClick={() => onRemove(index + 1)} ariaLabel={`Remove photo ${index + 2}`} />
             </div>
           ))}
         </div>
@@ -415,14 +426,20 @@ function PhotoGrid({
         <div key={`${preview}-${index}`} className="relative">
           <img src={preview} alt="" className="aspect-square object-cover w-full rounded-none" />
           {uploadFailed && <UploadRetryOverlay />}
-          <RemoveButton onClick={() => onRemove(index)} />
+          <RemoveButton onClick={() => onRemove(index)} ariaLabel={`Remove photo ${index + 1}`} />
         </div>
       ))}
     </div>
   );
 }
 
-function RemoveButton({ onClick }: { onClick: () => void }) {
+function RemoveButton({
+  onClick,
+  ariaLabel,
+}: {
+  onClick: () => void;
+  ariaLabel: string;
+}) {
   return (
     <motion.button
       type="button"
@@ -430,6 +447,7 @@ function RemoveButton({ onClick }: { onClick: () => void }) {
         event.stopPropagation();
         onClick();
       }}
+      aria-label={ariaLabel}
       className="absolute top-1 right-1 h-6 w-6 bg-abyss-900/80 rounded-full flex items-center justify-center hover:bg-abyss-900 transition-colors"
       {...tapMotionProps}
     >

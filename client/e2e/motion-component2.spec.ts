@@ -17,6 +17,7 @@ test('component 2 timeline keeps reorder local until explicit completion', async
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
   let reorderRequests = 0;
+  let generatedMomentIds: string[] | null = null;
   const today = new Date();
   const headers = {
     apikey: serverEnv.SUPABASE_SERVICE_ROLE_KEY,
@@ -45,6 +46,8 @@ test('component 2 timeline keeps reorder local until explicit completion', async
 
   const journalDate = format(today, 'yyyy-MM-dd');
   await page.route('**/api/journal/generate', async (route) => {
+    const payload = route.request().postDataJSON() as { momentIds?: string[] } | undefined;
+    generatedMomentIds = payload?.momentIds ?? null;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -95,7 +98,9 @@ test('component 2 timeline keeps reorder local until explicit completion', async
   }
 
   await loginToHome(page, email, password);
-  await page.getByRole('button', { name: /start journaling/i }).click();
+  await page.getByTestId('home-activity-handle').click();
+  await expect(page.getByTestId('home-activity-sheet')).toHaveAttribute('data-sheet-state', 'peek');
+  await page.getByRole('button', { name: /start journal/i }).click();
   await page.waitForURL('**/timeline');
 
   const handles = page.getByLabel(/reorder moment/i);
@@ -130,6 +135,8 @@ test('component 2 timeline keeps reorder local until explicit completion', async
 
   await page.getByRole('button', { name: /done — generate my journal/i }).click();
   await expect.poll(() => reorderRequests, { timeout: 10000 }).toBe(1);
+  expect(generatedMomentIds).not.toBeNull();
+  expect(generatedMomentIds).toHaveLength(6);
 
   fs.writeFileSync(
     path.join(validationDirectory, 'component2-console.json'),

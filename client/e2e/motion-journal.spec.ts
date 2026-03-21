@@ -56,7 +56,7 @@ const pngDataUrl = `data:image/png;base64,${
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9pRyxu8AAAAASUVORK5CYII='
 }`;
 
-test('journal generating state renders deterministic skeletons without console errors', async ({ page, request }) => {
+test('journal generating state renders the quill loader without console errors', async ({ page, request }) => {
   test.setTimeout(120000);
   fs.mkdirSync(screenshotDir, { recursive: true });
 
@@ -90,7 +90,8 @@ test('journal generating state renders deterministic skeletons without console e
 
   await loginToHome(page, email, password);
   await page.goto(`/journal/${today}`);
-  await expect(page.locator('[data-journal-skeleton="true"]')).toHaveCount(5);
+  await expect(page.locator('[data-journal-skeleton="true"]')).toHaveCount(0);
+  await expect(page.getByRole('img', { name: /journal writing animation/i })).toBeVisible();
 
   await page.screenshot({
     path: path.join(screenshotDir, 'journal-generating.png'),
@@ -99,6 +100,64 @@ test('journal generating state renders deterministic skeletons without console e
 
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
+});
+
+test('journal direct entry exits safely back home instead of falling through history', async ({ page, request }) => {
+  test.setTimeout(120000);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const { email, password, userId, headers } = await createSeededUser(request, 'direct-exit');
+
+  const createJournalResponse = await page.request.post(`${serverEnv.SUPABASE_URL}/rest/v1/journal_entries`, {
+    headers,
+    data: {
+      user_id: userId,
+      day_date: today,
+      content: 'Direct-entry journal route validation.',
+      status: 'confirmed',
+      generated_at: new Date().toISOString(),
+      confirmed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  expect(createJournalResponse.ok()).toBeTruthy();
+
+  await loginToHome(page, email, password);
+  await page.goto(`/journal/${today}`);
+
+  await page.getByRole('button', { name: /^home$/i }).click();
+  await page.waitForURL('**/home');
+});
+
+test('history-opened journal returns to archive with an explicit exit', async ({ page, request }) => {
+  test.setTimeout(120000);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const { email, password, userId, headers } = await createSeededUser(request, 'history-exit');
+
+  const createJournalResponse = await page.request.post(`${serverEnv.SUPABASE_URL}/rest/v1/journal_entries`, {
+    headers,
+    data: {
+      user_id: userId,
+      day_date: today,
+      content: 'History exit validation journal.',
+      status: 'confirmed',
+      generated_at: new Date().toISOString(),
+      confirmed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  expect(createJournalResponse.ok()).toBeTruthy();
+
+  await loginToHome(page, email, password);
+  await page.goto('/journals');
+  await page.getByRole('button', { name: /history exit validation journal/i }).click();
+  await page.waitForURL(new RegExp(`/journal/${today}$`));
+
+  await page.getByRole('button', { name: /^archive$/i }).first().click();
+  await page.waitForURL('**/journals');
 });
 
 test('journal draft state renders semantic markdown blocks', async ({ page, request }) => {

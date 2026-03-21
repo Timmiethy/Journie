@@ -6,6 +6,7 @@ export default {
     extend: {
       colors: {
         abyss: {
+          950: '#030303',
           900: '#050505',
           800: '#0A0A0A',
           700: '#141414',
@@ -17,16 +18,25 @@ export default {
           500: '#525252',
         },
         aura: {
-          great:   '#2EEA99',
-          good:    '#FF8A4C',
-          neutral: '#8A9BB4',
-          low:     '#8D7B99',
-          rough:   '#E03131',
+          great:   '#63DDB6',
+          good:    '#F2A46D',
+          neutral: '#8DB8B2',
+          low:     '#7D94BC',
+          rough:   '#E56E72',
+        },
+        dawn: {
+          500: '#F2A46D',
+          400: '#F7B98C',
+          300: '#FAD2A8',
+        },
+        tide: {
+          500: '#8DB8B2',
+          400: '#A4CEC8',
         },
       },
       fontFamily: {
-        sans:  ['Satoshi', 'system-ui', 'sans-serif'],
-        serif: ['Newsreader', 'Georgia', 'serif'],
+        sans:  ['Inter', 'system-ui', 'sans-serif'],
+        serif: ['Lora', 'Georgia', 'serif'],
       },
       keyframes: {
         'fade-in-up': {

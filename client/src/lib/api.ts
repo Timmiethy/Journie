@@ -16,6 +16,8 @@ type JournalListParams = {
   limit?: number;
   offset?: number;
   status?: JournalEntry['status'];
+  from?: string;
+  to?: string;
 };
 
 type GenerateJournalResponse = {
@@ -131,8 +133,8 @@ export const api = {
   },
 
   journal: {
-    generate: (date: string, regenerate = false) =>
-      request<GenerateJournalResponse>('POST', '/journal/generate', { date, regenerate }),
+    generate: (date: string, regenerate = false, momentIds?: string[]) =>
+      request<GenerateJournalResponse>('POST', '/journal/generate', { date, regenerate, momentIds }),
     get: (date: string) => request<JournalEntry>('GET', `/journal/${date}`),
     update: (date: string, body: JournalUpdate) => request<JournalEntry>('PATCH', `/journal/${date}`, body),
     list: (params?: JournalListParams) => {
@@ -145,6 +147,12 @@ export const api = {
       }
       if (params?.status) {
         qs.set('status', params.status);
+      }
+      if (params?.from) {
+        qs.set('from', params.from);
+      }
+      if (params?.to) {
+        qs.set('to', params.to);
       }
       return request<JournalListEntry[]>('GET', `/journals${qs.size ? `?${qs.toString()}` : ''}`);
     },

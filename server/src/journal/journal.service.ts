@@ -105,7 +105,14 @@ export class JournalService {
     return data;
   }
 
-  async listByUser(userId: string, limit = 30, offset = 0, status?: string) {
+  async listByUser(
+    userId: string,
+    limit = 30,
+    offset = 0,
+    status?: string,
+    from?: string,
+    to?: string,
+  ) {
     const supabase = this.supabaseService.getClient();
     let query = supabase
       .from('journal_entries')
@@ -116,6 +123,14 @@ export class JournalService {
 
     if (status) {
       query = query.eq('status', status);
+    }
+
+    if (from) {
+      query = query.gte('day_date', from);
+    }
+
+    if (to) {
+      query = query.lte('day_date', to);
     }
 
     const { data, error } = await query;

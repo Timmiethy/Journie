@@ -31,7 +31,7 @@ export class JournalController {
     @CurrentUser() user: { id: string },
     @Body() body: GenerateJournalDto,
   ) {
-    return this.generationService.generate(user.id, body.date, body.regenerate);
+    return this.generationService.generate(user.id, body.date, body.regenerate, body.momentIds);
   }
 
   @Get(':date')
@@ -63,12 +63,16 @@ export class JournalsController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
     @Query('status') status?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     return this.journalService.listByUser(
       user.id,
       limit ? parseInt(limit) : 30,
       offset ? parseInt(offset) : 0,
       status,
+      from,
+      to,
     );
   }
 }

@@ -11,10 +11,10 @@
 ### Core Loop
 
 1. User completes a one-time **persona survey** (60 seconds) so the AI knows their writing style and personality.
-2. Throughout the day, user creates **moments** — each moment is a batch of one or more photos plus optional text or voice context.
-3. When the user is done for the day, they hit **"Start Journaling"** → confirm the timeline order of moments → hit **"Done"**.
-4. The AI generates a journal entry for that day, drawing on: the persona, all moments (photos + context), and past journal history.
-5. User reviews, optionally edits, and confirms. The journal is saved.
+2. Throughout the day, the user captures or imports photos on `/home`, reviews them in a full-screen overlay, and saves **moments** with optional mood, typed context, and/or voice transcription.
+3. When the user is done for the day, they open **`/timeline`**, reorder or trim the day's moments, and tap **"done — generate my journal"**.
+4. The app navigates immediately to **`/journal/:date`** while the backend generates the draft asynchronously from the persona, ordered moments, recent confirmed journals, learned voice profile, and recent edit corrections when available.
+5. The user reviews the draft, optionally edits it, confirms it, and that confirmed output becomes part of the future voice-learning loop.
 
 ### Key Design Principles
 
@@ -22,6 +22,7 @@
 - **Low friction:** Every interaction should feel like 2–3 taps max.
 - **Personal voice:** The generated journal should read as if the user wrote it on their best day — specific, emotional, never generic.
 - **Mobile-first:** All layouts are designed for phones. Desktop is a nice-to-have, not a target.
+- **Optimistic but resilient:** Navigation should feel instant, while async backend work continues in the background and degrades gracefully if AI services are unavailable.
 
 ---
 
@@ -29,11 +30,12 @@
 
 ### Architecture
 
-This is a **monorepo** with two separate applications:
+This is a **pnpm monorepo** with shared types and two runtime applications:
 - `client/` — React + Vite + Tailwind CSS (frontend SPA)
 - `server/` — NestJS (backend REST API)
+- `shared/types.ts` — canonical shared app types, re-exported by `client/src/types/index.ts`
 
-They communicate over HTTP. The client calls the server's REST API. They are developed, built, and deployed independently but live in one repo.
+They communicate over HTTP. The client calls the server's REST API. They are developed and built independently but live in one repo with shared type definitions.
 
 ### Naming
 
@@ -54,9 +56,12 @@ They communicate over HTTP. The client calls the server's REST API. They are dev
 - All API calls go through a shared API client (`lib/api.ts`), never raw `fetch` in components.
 - Supabase client-side SDK for auth only (login, signup, session management). All data fetching goes through the NestJS backend.
 - Tailwind CSS for all styling. No CSS modules. No styled-components.
-- Mobile-first responsive: design at `375px` width, scale up.
+- Framer Motion is the motion layer. The app is wrapped in `LazyMotion` and `MotionConfig reducedMotion="user"` in `client/src/main.tsx`.
+- Route surfaces are lazy-loaded at the router level, with preload helpers in `client/src/lib/route-preloaders.ts`.
+- Shared shell/layout state lives in `AuraShell`, which applies the mood-reactive aura background and constrains the main app surface to `max-width: 480px`.
+- Mobile-first responsive: design around a narrow phone viewport and scale up without changing the app's single-column structure.
 - All async operations should show loading states and handle errors gracefully.
-- Use Zustand for global client state (today's moments, auth state).
+- Use Zustand for global client state: auth identity, online/offline status, today's moments, current aura color, and the calendar popover state.
 
 ### Code Style — Server (NestJS)
 
@@ -65,15 +70,17 @@ They communicate over HTTP. The client calls the server's REST API. They are dev
 - Controllers handle HTTP concerns only (parse request, return response). Business logic lives in services.
 - Use `class-validator` and `class-transformer` for DTO validation.
 - Use NestJS Guards for authentication (validate Supabase JWT on every request).
-- Use NestJS Interceptors for response transformation if needed.
 - All Supabase DB queries go through services, using the Supabase JS client with the service role key.
 - All OpenAI calls go through dedicated service classes.
+- Use `@CurrentUser()` instead of reading `req.user` directly in controllers.
+- Keep the API prefix at `/api`, and keep `GET /api/health` available for smoke checks and local orchestration.
 
 ### Component Architecture (Client)
 
-- `components/ui/` — reusable primitives (Button, Input, Modal, etc.)
-- `components/` — feature-specific components (MomentCard, PersonaSurvey, JournalViewer, etc.)
+- `components/ui/` — reusable primitives such as `action-button.tsx` and `horizontal-scroll-strip.tsx`
+- `components/` — feature-specific building blocks such as `camera-capture.tsx`, `moment-form.tsx`, `calendar-view.tsx`, and `journal-renderer.tsx`
 - `pages/` — route-level page components (one per screen)
+- `lib/` — API client, motion helpers, route preloaders, navigation helpers, store, Supabase client, and utility helpers
 - Keep components small. If a component exceeds ~150 lines, split it.
 
 ---
@@ -83,16 +90,19 @@ They communicate over HTTP. The client calls the server's REST API. They are dev
 | Layer | Technology | Why |
 |---|---|---|
 | **Frontend** | React 18 + Vite | Fast dev server, SPA with client-side routing |
-| Routing (client) | React Router v6 | Declarative routing for SPA |
-| Styling | Tailwind CSS | Utility-first, fast iteration, mobile-first |
-| Client State | Zustand | Lightweight global state for moments, auth |
+| Routing (client) | React Router v6 + route-level lazy loading | Declarative SPA routing with lighter initial bundles |
+| Motion | Framer Motion 12 | Shared motion primitives, layout transitions, reduced-motion support |
+| Styling | Tailwind CSS + `@fontsource/inter` + `@fontsource/lora` | Utility-first styling with bundled fonts and no runtime font fetch |
+| Markdown rendering | `react-markdown` | Renders generated journal content semantically |
+| Client State | Zustand | Lightweight global state for moments, auth, aura, and calendar popovers |
 | **Backend** | NestJS | Modular, decorator-based, TypeScript-native, scalable |
 | Auth | Supabase Auth (client SDK) + NestJS Guard (JWT validation) | Client handles login/signup, server validates tokens |
 | Database | Supabase (PostgreSQL) | Relational, row-level security, real-time |
-| File Storage | Supabase Storage | S3-compatible, integrated auth policies |
-| AI — Vision + Text | OpenAI GPT-4o | Multimodal (image + text in one call) |
-| AI — Voice Transcription | OpenAI Whisper API | High accuracy, simple API |
-| Deployment | AWS (Amplify static for client, Amplify compute or EC2 for server) | Aligns with AWS sponsor track |
+| File Storage | Supabase Storage | Private bucket, server-side uploads, signed URL access |
+| AI — Vision + Text | OpenAI GPT-4o | Vision descriptions, journal generation, and voice-profile distillation |
+| AI — Voice Transcription | OpenAI Whisper (`whisper-1`) | Speech-to-text for optional voice context |
+| Testing | Playwright + Vitest | E2E browser validation plus unit-test scaffolding |
+| Deployment | Not locked in the repo yet | The verified architecture in this repo is local pnpm workspace + Supabase + OpenAI env configuration |
 | Package Manager | pnpm | Fast, disk-efficient, good monorepo support |
 
 ### Key Dependencies — Client (`client/package.json`)
@@ -102,13 +112,16 @@ They communicate over HTTP. The client calls the server's REST API. They are dev
   "react": "^18",
   "react-dom": "^18",
   "react-router-dom": "^6",
+  "framer-motion": "^12",
+  "react-markdown": "^10",
   "@supabase/supabase-js": "^2",
+  "@fontsource/inter": "^5",
+  "@fontsource/lora": "^5",
   "zustand": "^4",
   "tailwindcss": "^3",
-  "lucide-react": "^0.300",
+  "lucide-react": "^0.462",
   "date-fns": "^3",
-  "sonner": "^1",
-  "vite": "^5"
+  "sonner": "^1"
 }
 ```
 
@@ -135,36 +148,33 @@ They communicate over HTTP. The client calls the server's REST API. They are dev
 
 ### TypeScript Interfaces
 
-These are the canonical types. All frontend components and API routes import from `/src/types/index.ts`.
+These are the canonical application types. The source of truth is `shared/types.ts`; the client re-exports them from `client/src/types/index.ts`, and the server mirrors them in `server/src/types/index.ts`.
 
 ```typescript
-// /src/types/index.ts
+// shared/types.ts
 
 // ─── User & Persona ───
 
 export interface User {
-  id: string;                // Supabase auth UID
+  id: string;
   email: string;
   display_name: string;
   avatar_url: string | null;
-  created_at: string;        // ISO 8601
+  created_at: string;
 }
 
 export interface Persona {
-  id: string;                // UUID
-  user_id: string;           // FK → User.id
-  // Writing preferences (how the journal sounds)
+  id: string;
+  user_id: string;
   writing_style: WritingStyle;
   journal_topics: JournalTopic[];
   narrative_voice: NarrativeVoice;
   emotional_depth: EmotionalDepth;
   personality_tags: PersonalityTag[];
-  // Life context (who the person is)
   mbti: MBTIType | null;
   occupation: Occupation | null;
   daily_people: DailyPerson[];
   daily_activities: DailyActivity[];
-  // Freeform
   additional_context: string | null;
   created_at: string;
   updated_at: string;
@@ -187,52 +197,68 @@ export type DailyActivity = 'work-school' | 'cooking' | 'exercise' | 'reading' |
 // ─── Moments ───
 
 export interface Moment {
-  id: string;                // UUID
-  user_id: string;           // FK → User.id
-  day_date: string;          // YYYY-MM-DD, the day this moment belongs to
-  order_index: number;       // position in the day's timeline (0-based)
-  text_context: string | null;       // optional text the user typed
-  voice_transcript: string | null;   // optional transcribed voice input
-  mood: Mood | null;                 // optional mood tag
-  captured_at: string;       // ISO 8601 — when the moment was created
+  id: string;
+  user_id: string;
+  day_date: string;
+  order_index: number;
+  text_context: string | null;
+  voice_transcript: string | null;
+  mood: Mood | null;
+  captured_at: string;
   created_at: string;
+  updated_at: string;
 }
 
 export type Mood = 'great' | 'good' | 'neutral' | 'low' | 'rough';
 
 export interface MomentPhoto {
-  id: string;                // UUID
-  moment_id: string;         // FK → Moment.id
-  storage_path: string;      // path in Supabase Storage bucket
-  photo_url: string;         // public or signed URL
-  order_index: number;       // order within the moment
+  id: string;
+  moment_id: string;
+  storage_path: string;
+  photo_url: string;
+  order_index: number;
   created_at: string;
 }
 
 // ─── Journal ───
 
 export interface JournalEntry {
-  id: string;                // UUID
-  user_id: string;           // FK → User.id
-  day_date: string;          // YYYY-MM-DD — one entry per day
-  content: string;           // markdown-formatted journal text
+  id: string;
+  user_id: string;
+  day_date: string;
+  content: string;
+  generated_content: string | null;
   status: JournalStatus;
-  generated_at: string;      // when AI generation completed
-  confirmed_at: string | null; // when user confirmed
+  generated_at: string;
+  confirmed_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export type JournalStatus = 'generating' | 'draft' | 'confirmed';
 
-// ─── Aggregated Types (not stored, assembled at query time) ───
+// ─── Voice Profile ───
+
+export interface VoiceProfile {
+  id: string;
+  user_id: string;
+  voice_summary: string;
+  preferred_phrases: string[];
+  avoided_phrases: string[];
+  journals_analyzed: number;
+  last_refreshed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Aggregated Types ───
 
 export interface MomentWithPhotos extends Moment {
   photos: MomentPhoto[];
 }
 
 export interface DayTimeline {
-  date: string;              // YYYY-MM-DD
+  date: string;
   moments: MomentWithPhotos[];
   journal: JournalEntry | null;
 }
@@ -242,7 +268,7 @@ export interface DayTimeline {
 
 ## 5. Database Schema (SQL)
 
-Run this in the Supabase SQL editor to set up all tables.
+The current schema lives in `supabase/migrations/001_initial_schema.sql`. The excerpt below matches the implemented migration as of the current repo state.
 
 ```sql
 -- Enable UUID generation
@@ -308,6 +334,7 @@ create table journal_entries (
   user_id uuid references auth.users(id) on delete cascade not null,
   day_date date not null,
   content text not null default '',
+  generated_content text,
   status text not null default 'generating' check (status in ('generating', 'draft', 'confirmed')),
   generated_at timestamptz,
   confirmed_at timestamptz,
@@ -315,16 +342,28 @@ create table journal_entries (
   updated_at timestamptz default now()
 );
 
--- One journal entry per user per day
 create unique index idx_journal_user_day on journal_entries(user_id, day_date);
+
+-- ─── Voice Profiles ───
+create table voice_profiles (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references auth.users(id) on delete cascade not null unique,
+  voice_summary text not null default '',
+  preferred_phrases text[] not null default '{}',
+  avoided_phrases text[] not null default '{}',
+  journals_analyzed int not null default 0,
+  last_refreshed_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
 
 -- ─── Row Level Security ───
 alter table personas enable row level security;
 alter table moments enable row level security;
 alter table moment_photos enable row level security;
 alter table journal_entries enable row level security;
+alter table voice_profiles enable row level security;
 
--- Users can only access their own data
 create policy "Users own their persona" on personas
   for all using (auth.uid() = user_id);
 
@@ -338,6 +377,9 @@ create policy "Users own their photos" on moment_photos
 
 create policy "Users own their journals" on journal_entries
   for all using (auth.uid() = user_id);
+
+create policy "Users own their voice profile" on voice_profiles
+  for all using (auth.uid() = user_id);
 ```
 
 ---
@@ -346,60 +388,41 @@ create policy "Users own their journals" on journal_entries
 
 ### Bucket: `moment-photos`
 
-- **Access:** Private. Authenticated users can upload/read their own photos only.
+- **Access:** Private bucket. The current production path is server-side upload/signing via the NestJS backend using the service-role client.
 - **Path convention:** `{user_id}/{day_date}/{moment_id}/{filename}`
   - Example: `abc123/2026-03-20/def456/photo_001.jpg`
 - **Accepted MIME types:** `image/jpeg`, `image/png`, `image/webp`, `image/heic`
 - **Max file size:** 10MB per photo.
 
-### Storage Policy (SQL)
+### Runtime Storage Behavior
 
-```sql
--- Allow users to upload to their own folder
-create policy "Users upload own photos"
-on storage.objects for insert
-with check (
-  bucket_id = 'moment-photos'
-  and (storage.foldername(name))[1] = auth.uid()::text
-);
-
--- Allow users to read their own photos
-create policy "Users read own photos"
-on storage.objects for select
-using (
-  bucket_id = 'moment-photos'
-  and (storage.foldername(name))[1] = auth.uid()::text
-);
-```
+- `POST /api/moments` uploads files from the server to the `moment-photos` bucket and persists both `storage_path` and a signed `photo_url`.
+- `photo_url` is what the client uses to render captured photos.
+- `storage_path` is retained so the backend can mint fresh signed URLs for AI vision requests during journal generation.
+- The vision pipeline currently creates 1-hour signed URLs from `storage_path` before sending images to GPT-4o.
+- The migration file includes commented policy examples as a future starting point if direct client storage access is ever introduced, but that is **not** the current architecture.
 
 ---
 
 ## 7. Screen Specifications
 
-Each screen is described in terms of: route, layout, key UI elements, user actions, and data dependencies. All screens assume a mobile viewport (375px wide) with a safe-area-aware layout.
+All screens render inside `AuraShell`, which applies the mood-reactive aura backdrop and constrains the interactive surface to a centered mobile column.
 
 ---
 
-### Screen 1: Auth (Login / Signup)
+### Screen 1: Auth + Post-Auth Resolver
 
-**Route:** `/auth`
+**Routes:** `/auth`, `/auth/resolver`
 
-**Layout:** Centered card with app logo at top, form below.
+**Auth screen behavior:**
+- Email/password auth via Supabase `signUp` or `signInWithPassword`
+- On successful auth, the client stores the user in Zustand immediately and redirects to `/auth/resolver`
 
-**UI Elements:**
-- App logo + tagline: "Your day, your journal, zero writing."
-- Email input field
-- Password input field
-- "Sign Up" primary button
-- "Log In" secondary text link (toggles form mode)
-
-**Behavior:**
-- On successful auth, check if persona exists for user.
-  - If no persona → redirect to `/onboarding`
-  - If persona exists → redirect to `/home`
-- Use Supabase Auth `signUp` / `signInWithPassword`.
-
-**Data:** None pre-loaded.
+**Resolver behavior:**
+- Reads the current Supabase session
+- Calls `GET /api/persona`
+- Redirects to `/onboarding` if persona is missing, otherwise `/home`
+- Uses the shared `LoadingScreen` instead of a blank route transition
 
 ---
 
@@ -407,158 +430,65 @@ Each screen is described in terms of: route, layout, key UI elements, user actio
 
 **Route:** `/onboarding`
 
-**Layout:** Full-screen stepped flow. One question per step. Progress bar at top (11 dots). Large tap-friendly option cards. "Next" button at bottom (disabled until selection made). "Back" button on steps 2+. Each step animates in with a subtle left-slide.
+**Current architecture:**
+- 11-step stepped survey rendered inside a surfaced card with a fixed frame and animated panel swaps
+- Global reduced-motion support: step transitions collapse to opacity-only if the user prefers reduced motion
+- Persona data is gathered in local component state and submitted once on the final step via `POST /api/persona`
 
-**Steps:**
-
-**Part A — Writing preferences (how the journal sounds)**
-
-1. **Writing style** — "How should your journal sound?"
-   - Options displayed as cards with a sample sentence each:
-     - ✨ **Poetic** — "The morning light whispered through the curtains..."
-     - 💬 **Casual** — "Grabbed coffee, hit the gym, pretty solid morning."
-     - 🪞 **Reflective** — "I noticed something shift in me today..."
-     - 😏 **Witty** — "Survived another Monday. Barely. The coffee deserves a medal."
-   - Single select. Tapping a card highlights it with accent-400 border.
-
-2. **Journal topics** — "What matters to you?" (multi-select, pick 1–3)
-   - Options as tappable pills: Emotions, Events, Growth, Relationships, Ideas, Gratitude
-   - Selected pills fill with accent-200 bg, accent-400 border.
-
-3. **Narrative voice** — "How do you talk to yourself?"
-   - Options as cards with example text:
-     - First person: "I went to the park..."
-     - Second person: "You went to the park..."
-     - Third person: "She went to the park..."
-   - Single select.
-
-4. **Emotional depth** — "How deep should we go?"
-   - Light: "Just the highlights, keep it breezy."
-   - Moderate: "Some feelings, some facts."
-   - Deep: "I want to actually reflect."
-   - Single select.
-
-5. **Personality tags** — "Pick what fits you" (multi-select, pick 2–4)
-   - Options as tappable pills in a flowing wrap layout:
-     - Introvert, Extrovert, Night owl, Early bird, Coffee lover, Foodie, Tech nerd, Creative, Adventurous, Homebody, Overthinker, Optimist
-   - Multi-select with max 4. After 4 selected, remaining pills dim to cream-300.
-
-**Part B — Life context (who the person is)**
-
-6. **MBTI** — "What's your MBTI type?"
-   - 4×4 grid of tappable pills (INTJ, INTP, ENTJ, ENTP, INFJ, INFP, ENFJ, ENFP, ISTJ, ISFJ, ESTJ, ESFJ, ISTP, ISFP, ESTP, ESFP).
-   - Each pill: cream-100 bg, rounded-full, font-sans 13px bold.
-   - Selected: accent-400 bg, white text.
-   - "I don't know / skip" text link below the grid.
-   - Single select.
-
-7. **Occupation** — "What do you do?"
-   - Options as tappable cards:
-     - 🎓 **Student**
-     - 💼 **Working professional**
-     - 🎨 **Freelancer / creative**
-     - 🌊 **Between things right now**
-     - 🤐 **Rather not say**
-   - Single select.
-
-8. **Daily people** — "Who's usually in your day?" (multi-select)
-   - Options as tappable pills:
-     - Partner/spouse, Close friends, Family, Coworkers/classmates, Mostly solo, Pets
-   - Multi-select. Selected pills fill with accent-200.
-
-9. **Daily activities** — "What fills your days lately?" (multi-select, pick up to 4)
-   - Options as tappable pills in a flowing wrap layout:
-     - Work/school, Cooking/eating out, Exercise/sports, Reading/learning, Music/art, Gaming, Nature/outdoors, Coffee/café culture, Side projects, Travel, Socializing, Self-care
-   - Multi-select with max 4. After 4 selected, remaining pills dim to cream-300.
-
-**Final step — Freeform + confirmation**
-
-10. **Additional context (optional)** — "Tell the AI anything else — your name, your vibe, your current life chapter."
-   - Textarea, placeholder: "e.g., I'm Tan, a CS student who lives on cà phê sữa đá and late-night coding sessions. Currently in my 'figuring it all out' era."
-   - "Skip" button visible.
-
-11. **Style preview** — Show a 3-sentence sample journal entry generated on-the-fly using the user's chosen writing style, voice, and MBTI context. "This is how your journal will sound." with a "Looks good, let's go!" CTA button.
-
-**Behavior:**
-- On "Looks good, let's go!": POST persona to DB, redirect to `/home`.
-- If user navigates away mid-survey, progress is lost (no draft saving for MVP).
-- The style preview (step 11) uses a hardcoded sample — not a real AI call — to avoid latency. Map writing_style × narrative_voice to pre-written sample paragraphs.
-- Back button goes to previous step.
-- Progress bar shows steps 1–11.
-
-**Data written:** `personas` table — one row per user.
+**Implemented steps:**
+1. Writing style
+2. Journal topics (1–3)
+3. Narrative voice
+4. Emotional depth
+5. Personality tags (2–4)
+6. MBTI (optional / skippable)
+7. Occupation
+8. Daily people
+9. Daily activities (up to 4)
+10. Additional context (optional)
+11. Hardcoded style preview generated from the chosen style + narrative voice + MBTI
 
 ---
 
-### Screen 3: Home (Capture Hub)
+### Screen 3: Home — Camera Hero + Gallery Page
 
 **Route:** `/home`
 
-**Layout:** This is the core screen. Mobile-first, inspired by Locket's camera-centric UI.
+**Current architecture:**
+- Two vertically stacked full-height pages in one scroll-snap container
+- Page one is the camera hero with:
+  - live square camera preview when `getUserMedia` succeeds
+  - graceful fallback panel when camera permission is denied, unsupported, or errors
+  - import button, shutter button, and journal/archive button
+- Page two is the gallery/activity page with:
+  - queued unsaved captures
+  - today's saved moments
+  - a single dock CTA that becomes either `review (n)` or `start journal`
 
-**UI Elements — Top Bar:**
-- Left: greeting — "Good [morning/afternoon/evening], {display_name}"
-- Right: "My Journal" button (icon: book) → navigates to `/journals`
+**Moment creation path:**
+- The primary path is a full-screen overlay on top of `/home`
+- `/moments/new` still exists as a compatibility route, but the active home flow no longer depends on route navigation for the modal
 
-**UI Elements — Main Area:**
-- Large camera viewfinder preview (takes up ~60% of screen height)
-- Below the viewfinder:
-  - **Capture button** (large circle, center) — takes a photo using device camera
-  - **Library button** (small, bottom-left of capture row) — opens device photo picker for importing from library
-- Below capture row:
-  - Scrollable horizontal row of **today's moments** as thumbnail cards
-  - Each card shows: first photo thumbnail, time, mood emoji if set
-  - Tapping a card opens the moment detail view (read-only, with option to delete)
-
-**UI Elements — Bottom:**
-- **"Start Journaling"** button — prominent CTA, fixed at bottom
-  - Only appears if there is at least 1 moment for today
-  - Navigates to `/timeline`
-
-**Camera Implementation:**
-- Use `<input type="file" accept="image/*" capture="environment">` for the capture button (opens native camera).
-- Use `<input type="file" accept="image/*" multiple>` for the library button (opens photo picker, allows multi-select).
-- After photo(s) are selected/taken, immediately navigate to the **Moment Creation Flow** (Screen 4).
-
-**Data loaded:**
-- Today's moments: `GET /api/moments?date={today}`
-- User persona (for greeting): from Supabase auth session + persona cache
+**Moment detail path:**
+- Saved moments open a read-only modal with photos, time, optional note, mood, and delete action
 
 ---
 
-### Screen 4: Moment Creation Flow
+### Screen 4: Moment Review + Save
 
-**Route:** `/moments/new` (or modal overlay on `/home`)
+**Primary path:** modal overlay on `/home`
 
-**Trigger:** Activated after the user takes a photo or selects photos from library.
+**Current architecture:**
+- Step 1: review selected photos, remove items, append more files
+- Step 2: add optional mood, typed context, and/or recorded voice
+- Voice capture uses browser `MediaRecorder`; stopping uploads the audio to `POST /api/transcribe`, and the returned transcript is merged into the text field
+- Images are compressed client-side before upload using `compressImage`
 
-**Layout:** Bottom sheet or full-screen overlay.
-
-**Step 4a: Photo Review**
-- Grid display of the photo(s) just captured/selected.
-- "Add more photos" button (opens camera/library again, appends to this moment).
-- "Next" button.
-
-**Step 4b: Context & Mood (optional)**
-- **Mood selector** — horizontal row of 5 tappable emoji:
-  - 🤩 Great | 😊 Good | 😐 Neutral | 😔 Low | 😣 Rough
-  - Default: none selected. Tapping one selects it (tapping again deselects).
-- **Text input** — expandable textarea.
-  - Placeholder: "What's happening?" (optional)
-- **Voice input button** (microphone icon)
-  - On tap: starts recording via browser `MediaRecorder` API.
-  - On stop: sends audio to `/api/transcribe` (Whisper), returns text, populates textarea.
-  - Shows recording indicator (pulsing red dot + duration counter).
-- **"Save Moment"** button.
-
-**Behavior:**
-- On "Save Moment":
-  1. **Client-side image compression:** Before uploading, resize photos to max 1920px on the longest edge and compress to JPEG quality 0.8 using `<canvas>`. This reduces typical phone photos from 5–8MB to ~200–400KB, making uploads fast and storage cheap.
-  2. Upload compressed photos to Supabase Storage → get URLs.
-  3. POST to `/api/moments` with: photos, text_context, voice_transcript, mood, captured_at.
-  4. Navigate back to `/home`. New moment appears in the today's moments row.
-
-**Data written:** `moments` + `moment_photos` tables.
+**Save behavior:**
+- Builds a multipart form with compressed photos plus optional `text_context`, `voice_transcript`, `mood`, `captured_at`, and `day_date`
+- Posts to `POST /api/moments`
+- Updates the Zustand moment store immediately on success
+- Returns the user to the gallery page of `/home`
 
 ---
 
@@ -566,63 +496,40 @@ Each screen is described in terms of: route, layout, key UI elements, user actio
 
 **Route:** `/timeline`
 
-**Trigger:** User taps "Start Journaling" on Home.
+**Current architecture:**
+- Loads today's moments from Zustand first, then falls back to `GET /api/moments?date=...`
+- Reorderable timeline list with delete actions
+- Empty-state card when there are no moments yet
 
-**Layout:** Vertical scrollable list, resembling a timeline.
-
-**UI Elements:**
-- Header: "Your day — {formatted date}"
-- Vertical timeline line running down the left side.
-- Each moment is a card positioned along the timeline:
-  - Timestamp (from `captured_at`)
-  - Thumbnail of first photo
-  - Mood emoji (if set)
-  - Snippet of text_context (if any), truncated to 1 line
-- **Reorder:** Each card has a drag handle (≡ icon) on the right. User can long-press and drag to reorder.
-  - On drop: update `order_index` for affected moments.
-- **Delete:** Swipe left on a card to reveal delete option.
-
-**Bottom Bar:**
-- "Done — Generate My Journal" button (primary CTA)
-
-**Behavior:**
-- On "Done":
-  1. PATCH `/api/moments/reorder` with the final order.
-  2. POST `/api/journal/generate` with `{ date: "YYYY-MM-DD" }`.
-  3. Navigate to `/journal/{date}` which shows a loading/generation state.
-
-**Data loaded:** Today's moments with photos.
-**Data written:** Updated `order_index` values; new `journal_entries` row with status `generating`.
+**Generate behavior:**
+- Saves the ordered IDs locally
+- Fires `PATCH /api/moments/reorder` in the background
+- Calls `POST /api/journal/generate` with `date` and the ordered `momentIds`
+- Navigates immediately to `/journal/:date` with typed route state indicating optimistic generation
 
 ---
 
 ### Screen 6: Journal View / Edit
 
-**Route:** `/journal/[date]`
+**Route:** `/journal/:date`
 
-**Layout:** Full-screen reading view, clean typography.
+**Current architecture:**
+- Route-level loading uses `LoadingScreen`
+- Fetches both the journal row and the day's moments
+- If the page was reached optimistically from timeline and the first fetch returns `404`, the client creates a temporary local `generating` journal and starts polling
+- Polling cadence: every 2 seconds, with a 30 second timeout
 
-**UI Elements — Generation State (`status === 'generating'`):**
-- Animated loading indicator (e.g., a pen writing animation or pulsing dots)
-- Text: "Writing your journal..."
-- The generation typically takes 5–15 seconds. Poll `/api/journal/{date}` every 2 seconds or use Supabase real-time subscription on `journal_entries` table.
-
-**UI Elements — Draft State (`status === 'draft'`):**
-- **Date header:** "March 20, 2026 — Thursday"
-- **Journal content:** Rendered markdown. Includes references to moments' photos inline (displayed as embedded images within the text flow).
-- **Edit button** (pencil icon, top-right) → switches content to an editable markdown textarea.
-- **"Confirm & Save"** button at bottom.
-- **"Regenerate"** button (small, secondary) — re-triggers generation with same context.
-
-**UI Elements — Confirmed State (`status === 'confirmed'`):**
-- Same as draft but read-only.
-- "Edit" button still available (sets status back to `draft`).
-
-**Behavior:**
-- On "Confirm & Save": PATCH `/api/journal/{date}` with `{ status: 'confirmed', content: currentContent }`.
-- On "Regenerate": POST `/api/journal/generate` with `{ date, regenerate: true }`.
-
-**Data loaded:** `journal_entries` row for the date + all moments with photos for inline display.
+**States:**
+- `generating`
+  - shows the animated quill loader from `JournalRenderer`
+  - polls `GET /api/journal/:date` until the row becomes `draft` or `confirmed`
+- `draft`
+  - rendered markdown with interleaved moment photos
+  - sticky bottom bar with `confirm & save` and `regenerate`
+- `confirmed`
+  - read-only journal with stable exit CTAs (`back home`, and conditionally `archive` / `back to timeline`)
+- `editing`
+  - textarea editor after converting the journal back to `draft` if needed
 
 ---
 
@@ -630,29 +537,27 @@ Each screen is described in terms of: route, layout, key UI elements, user actio
 
 **Route:** `/journals`
 
-**Layout:** Calendar-based view.
-
-**UI Elements:**
-- **Monthly calendar grid** at top. Days with confirmed journals are highlighted (accent color dot).
-- Tapping a highlighted day navigates to `/journal/{date}`.
-- Below the calendar: **scrollable list** of recent journal entries, newest first.
-  - Each card: date, first line of content (truncated), first photo thumbnail from that day.
-- Empty state: "No journals yet. Start capturing moments!"
-
-**Data loaded:** `journal_entries` (all for current user, paginated) + first photo of each day's first moment for thumbnails.
+**Current architecture:**
+- Month-scoped archive with client-side caching keyed by `yyyy-MM`
+- Prefetches the current month plus the two previous months
+- Uses `GET /api/journals?status=confirmed&from=...&to=...`
+- Calendar dots and recent list are both driven by cached month data
+- Tapping a calendar day opens a root-mounted popover stored in Zustand; the popover can retarget to another day without closing/reopening
+- Recent list entries navigate to `/journal/:date` with typed route state indicating the source was `history`
 
 ---
 
 ## 8. API Routes
 
-All routes are NestJS controller endpoints. The server runs on a separate port (e.g., `http://localhost:3001/api`). The client calls these endpoints via the shared API client (`client/src/lib/api.ts`).
+All routes are NestJS controller endpoints. The server runs on a separate port (for local dev, `http://127.0.0.1:3001/api`). The client calls these endpoints via the shared API client (`client/src/lib/api.ts`).
 
 ### Auth Architecture
 
 Authentication uses a split model:
 - **Client side:** Supabase Auth SDK handles login, signup, and session management. On successful auth, the client receives a Supabase JWT access token.
-- **Server side:** Every API request includes the JWT as `Authorization: Bearer <token>`. A NestJS `AuthGuard` validates the token using Supabase's `auth.getUser(token)` method and attaches the user to the request object.
+- **Server side:** Every API request includes the JWT as `Authorization: Bearer <token>`. A NestJS `AuthGuard` validates the token using Supabase `auth.getUser(token)` and attaches the user to the request object.
 - **No cookies or server-side sessions.** The client stores the token via Supabase's built-in session persistence and sends it with every request.
+- **Client request wrapper:** `client/src/lib/api.ts` retries session lookup briefly before each request, redirects to `/auth` on `401`, and clears the Zustand auth state on expiry.
 
 ```typescript
 // server — auth.guard.ts (simplified)
@@ -670,13 +575,24 @@ export class AuthGuard implements CanActivate {
 }
 ```
 
-All controllers use `@UseGuards(AuthGuard)` at the class level. The authenticated user is accessed via `@Req() req` → `req.user`.
+All feature controllers use `@UseGuards(AuthGuard)` at the class level. The authenticated user is accessed via `@CurrentUser()`.
+
+---
+
+### `GET /api/health`
+
+Simple health endpoint for smoke checks and local orchestration.
+
+**Response:** `200 OK`
+```json
+{ "status": "ok" }
+```
 
 ---
 
 ### `POST /api/persona`
 
-Create or update the user's persona.
+Create or update the current user's persona.
 
 **Request Body:**
 ```json
@@ -697,6 +613,14 @@ Create or update the user's persona.
 **Response:** `201 Created` — returns the `Persona` object.
 
 **Logic:** Upsert into `personas` table (unique on `user_id`).
+
+---
+
+### `GET /api/persona`
+
+Fetch the current user's persona, or `null` if onboarding has not been completed yet.
+
+**Response:** `200 OK` — `Persona | null`
 
 ---
 
@@ -725,19 +649,19 @@ Create a new moment.
 **Logic:**
 1. Determine `order_index` = count of existing moments for this user+day.
 2. Upload each photo to Supabase Storage at `{user_id}/{day_date}/{moment_id}/{index}.jpg`.
-3. Get public URLs.
+3. Create signed read URLs and persist them as `photo_url`.
 4. Insert `moments` row + `moment_photos` rows.
 5. Return the assembled object.
 
 ---
 
-### `DELETE /api/moments/[id]`
+### `DELETE /api/moments/:id`
 
 Delete a moment and its photos.
 
 **Response:** `204 No Content`.
 
-**Logic:** Delete from `moments` (cascade deletes photos rows). Also delete files from storage bucket.
+**Logic:** Delete from `moments` (cascade deletes photo rows) and delete the uploaded files from the storage bucket.
 
 ---
 
@@ -761,7 +685,7 @@ Update the order of moments for a day.
 
 ### `POST /api/transcribe`
 
-Transcribe voice audio to text using OpenAI Whisper.
+Transcribe voice audio to text.
 
 **Request:** `multipart/form-data`
 - `audio`: File (webm, mp4, wav, etc.)
@@ -773,7 +697,9 @@ Transcribe voice audio to text using OpenAI Whisper.
 }
 ```
 
-**Logic:** Forward audio file to OpenAI `audio/transcriptions` endpoint with model `whisper-1`.
+**Logic:**
+- Use OpenAI `audio.transcriptions.create` with model `whisper-1` when OpenAI is configured.
+- If OpenAI is unavailable or misconfigured, fall back to a deterministic transcript string derived from the uploaded file.
 
 ---
 
@@ -785,7 +711,8 @@ Trigger journal generation for a day.
 ```json
 {
   "date": "2026-03-20",
-  "regenerate": false
+  "regenerate": false,
+  "momentIds": ["moment-uuid-1", "moment-uuid-3", "moment-uuid-2"]
 }
 ```
 
@@ -797,22 +724,27 @@ Trigger journal generation for a day.
 }
 ```
 
-**Logic:** This is the core AI pipeline. See Section 9 for full details. Summary:
-1. Create `journal_entries` row with status `generating` (or update if `regenerate: true`).
-2. Trigger generation (can just `await` inline since this is a hackathon).
-3. On completion, update row with `content` and set status to `draft`.
+**Logic summary:**
+1. Upsert `journal_entries` with status `generating`.
+2. Return immediately.
+3. Continue the AI pipeline in the background.
+4. Reorder moments by `momentIds` if provided.
+5. Persist the result as `draft` with `content` and `generated_content` on success.
+6. On unrecoverable failure, persist the failure placeholder in a `draft` row.
 
 ---
 
-### `GET /api/journal/[date]`
+### `GET /api/journal/:date`
 
 Fetch the journal entry for a specific date.
 
-**Response:** `200 OK` — `JournalEntry` object. Returns `404` if no entry exists.
+**Response:** `200 OK` — `JournalEntry`
+
+**Errors:** `404` when no row exists for that date.
 
 ---
 
-### `PATCH /api/journal/[date]`
+### `PATCH /api/journal/:date`
 
 Update journal content or status.
 
@@ -826,7 +758,9 @@ Update journal content or status.
 
 **Response:** `200 OK` — updated `JournalEntry`.
 
-**Logic:** If status is being set to `confirmed`, also set `confirmed_at = now()`.
+**Logic:**
+- If status becomes `confirmed`, set `confirmed_at = now()`
+- If the user edits content and `generated_content` is available, preserve the original AI draft so later voice learning can compare AI output against the user's final version
 
 ---
 
@@ -838,149 +772,100 @@ List all journal entries for the current user.
 - `limit` (default 30)
 - `offset` (default 0)
 - `status` (optional filter: `draft` | `confirmed`)
+- `from` (optional inclusive lower date bound)
+- `to` (optional inclusive upper date bound)
 
-**Response:** `200 OK` — `JournalEntry[]` ordered by `day_date` DESC. Also includes a `first_photo_url` field (fetched via join) for each entry to show thumbnails.
+**Response:** `200 OK` — entries ordered by `day_date` DESC, each including all `JournalEntry` fields plus `first_photo_url` for archive thumbnails.
 
 ---
 
 ## 9. AI Pipeline — Journal Generation
 
-This is the most critical system in the app. The quality of the generated journal IS the product.
+This is the most critical system in the app. The quality of the generated journal is the product, but the implementation is intentionally resilient: the pipeline should still complete with deterministic fallback output when OpenAI is unavailable.
 
-### Step-by-step Process
+### Generation Request Lifecycle
 
 When `POST /api/journal/generate` is called:
 
-#### Step 1: Gather Context
+#### Step 1: Create / update the journal row
 
-Fetch from DB:
-- **Persona:** the user's `personas` row
-- **Today's moments:** all moments for the date, ordered by `order_index`, with photos
-- **Recent journals:** the last 3 confirmed journal entries (for continuity and voice calibration)
+- Upsert `journal_entries(user_id, day_date)` with status `generating`
+- Return `202 Accepted` immediately with `{ journal_id, status: "generating" }`
+- Continue the actual generation work in `runGenerationPipeline(...)` without blocking the HTTP response
 
-#### Step 2: Process Photos with Vision
+#### Step 2: Gather context
 
-For each moment's photos, send them to GPT-4o with a vision prompt:
+Fetch in parallel:
+- **Persona** from `personas`
+- **Today's moments** from `moments` + `moment_photos`
+- **Recent confirmed journals** (up to 7) for continuity
+- **Voice profile** from `voice_profiles` if present
+- **Recent edit diffs** from confirmed journals where `generated_content !== content`
 
-```
-Describe what you see in these photos in vivid, specific detail.
-Focus on: the setting, people present, objects, food, activities,
-lighting, mood of the scene. Be specific — mention colors, brands,
-locations if identifiable. 2-3 sentences per photo.
-```
+If `momentIds` were supplied by the timeline, reorder the fetched moments to match the exact client-side sequence before prompt assembly.
 
-Collect all photo descriptions grouped by moment.
+#### Step 3: Describe photos
 
-#### Step 3: Assemble the Generation Prompt
+For each moment:
+- Create fresh 1-hour signed URLs from each `storage_path`
+- Send those URLs to GPT-4o vision with the shared photo prompt when OpenAI is configured
+- If OpenAI is unavailable or misconfigured, fall back to deterministic descriptions such as `"A single photo was captured for this moment."`
 
-The system prompt sets up the persona. The user message provides the day's context.
+#### Step 4: Assemble the prompt
 
-**System Prompt Template:**
+The system prompt combines:
+- persona writing preferences
+- persona life context
+- recent confirmed journal excerpts
+- learned voice profile summary and preferred / avoided phrases
+- recent edit corrections distilled from `generated_content` vs confirmed `content`
 
-```
-You are a personal journal writer. You write daily journal entries for a specific person
-based on their captured moments throughout the day.
+The user message enumerates the ordered moments:
+- formatted capture time
+- optional mood
+- photo descriptions
+- merged typed notes + voice transcript
 
-PERSONA — WRITING PREFERENCES:
-- Writing style: {writing_style}
-- Topics they care about: {journal_topics}
-- Narrative voice: {narrative_voice} ("I" / "You" / "They")
-- Emotional depth: {emotional_depth}
-- Personality tags: {personality_tags}
+The current prompt adds two important calibration layers beyond the original MVP:
+- learned voice profile is treated as the highest-priority voice signal when available
+- recent edit corrections are treated as explicit examples of what the user rejected vs preferred
 
-PERSONA — LIFE CONTEXT:
-- MBTI: {mbti or "not provided"}
-- Occupation: {occupation or "not provided"}
-- People in their day: {daily_people}
-- Activities that fill their days: {daily_activities}
-- Additional context from the user: "{additional_context or "none provided"}"
+#### Step 5: Generate the journal body
 
-Use the MBTI type to shape the cognitive and emotional texture of the journal.
-For example: an INTJ journals with analytical precision and internal processing.
-An ESFP journals with sensory detail and in-the-moment energy.
-An INFP journals with emotional depth and idealistic reflection.
-If MBTI is not provided, rely on the other persona signals.
+- Primary path: OpenAI `chat.completions.create` with model `gpt-4o`
+- Temperature: `0.8`
+- Max tokens: `1500`
+- Fallback path: deterministic journal assembly using the persona voice, ordered moments, mood, notes, and fallback photo descriptions
 
-Use the life context (occupation, people, activities) to make the journal feel grounded
-in the user's real life. Reference their world naturally — a student's journal mentions
-classes and deadlines, a freelancer's mentions clients and creative blocks. Don't force
-it; only reference what's relevant to the day's moments.
+#### Step 6: Persist the result
 
-VOICE CALIBRATION (from recent journals):
-{last_3_journal_excerpts_first_100_words_each}
+On success:
+- update `content`
+- update `generated_content` to the same initial AI draft when the schema supports it
+- set `status = 'draft'`
+- set `generated_at = now()`
 
-RULES:
-1. Write in the exact narrative voice specified (first/second/third person).
-2. Match the writing style precisely. If "casual", use slang and short sentences.
-   If "poetic", use imagery and rhythm. If "reflective", ask internal questions.
-   If "witty", use humor and irony.
-3. Reference SPECIFIC details from the photos — a color, a dish, a facial expression,
-   a location. Never be vague.
-4. Honor the emotional depth setting. "Light" = no deep introspection. "Deep" = explore
-   feelings, doubts, gratitude, what things meant.
-5. The journal should flow as a narrative of the day, not a list of events.
-   Transitions between moments should feel natural.
-6. Length: 200-500 words depending on number of moments.
-7. Use markdown formatting subtly — no headers, but occasional *emphasis* or line breaks
-   for pacing.
-8. If the user provided text or voice context for a moment, weave their exact words and
-   sentiments into the narrative naturally.
-9. End with a closing reflection or feeling that ties the day together.
-```
+On unrecoverable failure:
+- mark the row as `draft`
+- set `content = "Generation failed — tap Regenerate to try again."`
 
-**User Message Template:**
+#### Step 7: Refresh voice profile in the background
 
-```
-Write today's journal entry based on these moments:
+After a successful generation, the service triggers a non-blocking voice-profile refresh check:
+- count confirmed journals
+- if there are at least 5 more confirmed journals than the last analyzed count, distill a new voice profile with GPT-4o
+- persist `voice_summary`, `preferred_phrases`, `avoided_phrases`, and `journals_analyzed`
 
-{for each moment, ordered by order_index:}
----
-MOMENT {index + 1} — {formatted_time}
-Mood: {mood or "not specified"}
-Photos: {photo_descriptions from Step 2}
-User's notes: {text_context and/or voice_transcript, or "none"}
----
+### Edit-Diff Learning Loop
 
-Today's date: {formatted_date}
-```
+- `generated_content` stores the original AI draft
+- if the user edits and confirms the journal, the server preserves the untouched original draft when possible
+- later generations can inject the most recent edit diffs as examples of what the user kept vs changed
 
-#### Step 4: Generate
+### Graceful Degradation
 
-Call OpenAI `chat.completions.create` with:
-- model: `gpt-4o`
-- messages: [system prompt, user message]
-- temperature: `0.8` (creative but coherent)
-- max_tokens: `1500`
-
-#### Step 5: Store Result
-
-Update the `journal_entries` row:
-- `content` = generated text
-- `status` = `draft`
-- `generated_at` = now()
-
-### Token Budget Estimation
-
-- System prompt: ~400 tokens
-- Per moment (2 photos + context): ~300 tokens
-- 5 moments/day average: ~1500 tokens input
-- Recent journals context: ~400 tokens
-- Output: ~500-800 tokens
-- **Total per generation: ~2500-3000 tokens** — well within GPT-4o limits, cheap per call.
-
-### Photo Handling for the API
-
-GPT-4o accepts images as base64 or URLs. Since photos are in Supabase Storage:
-- Generate **signed URLs** (valid for 1 hour) for each photo.
-- Pass URLs directly in the GPT-4o message content as `image_url` type content blocks.
-
-```typescript
-// Example: building the vision message for a moment's photos
-const photoContents = photos.map(photo => ({
-  type: "image_url" as const,
-  image_url: { url: photo.signedUrl, detail: "low" } // "low" to save tokens
-}));
-```
+- If OpenAI is misconfigured, `OpenaiService` disables the client and the app falls back to deterministic journal / vision / transcription behavior instead of crashing
+- If the `generated_content` column or `voice_profiles` table is missing, the services log warnings and continue in a reduced-capability mode rather than failing the entire generation request
 
 ---
 
@@ -989,195 +874,175 @@ const photoContents = photos.map(photo => ({
 ### Flow A: Moment Capture
 
 ```
-User taps Capture/Library
+User captures or imports photos on /home
         │
         ▼
- Photos selected/taken
+Files enter the local capture queue
         │
         ▼
- [Screen 4: Moment Creation]
+Home opens the moment form overlay
   ├─ Optional: select mood
   ├─ Optional: type text context
-  └─ Optional: record voice → POST /api/transcribe → Whisper → text
+  └─ Optional: record voice → POST /api/transcribe → transcript
         │
         ▼
- User taps "Save Moment"
+User taps "Save Moment"
         │
         ▼
- Upload photos → Supabase Storage
+Client compresses photos
         │
         ▼
- POST /api/moments
+POST /api/moments
   ├─ Insert moments row
+  ├─ Upload photos to Supabase Storage
   └─ Insert moment_photos rows
         │
         ▼
- Return to Home, moment appears in today's row
+Update Zustand + return to the gallery page on /home
 ```
 
 ### Flow B: Journal Generation
 
 ```
-User taps "Start Journaling"
+User taps "start journal" from the gallery page on /home
         │
         ▼
- [Screen 5: Timeline Confirmation]
+[Screen 5: Timeline Confirmation]
   ├─ Moments displayed in order
   └─ User can drag to reorder
         │
         ▼
- User taps "Done — Generate"
+User taps "Done — Generate"
+        │
+        ├─ Fire PATCH /api/moments/reorder in the background
+        ├─ POST /api/journal/generate with date + ordered momentIds
+        └─ Navigate immediately to /journal/:date with optimistic route state
         │
         ▼
- PATCH /api/moments/reorder (save final order)
-        │
-        ▼
- POST /api/journal/generate
-        │
-        ├─ Create journal_entries row (status: generating)
-        │
-        ├─ Fetch persona + moments + photos + recent journals
-        │
-        ├─ For each photo: GPT-4o vision → description
-        │
-        ├─ Assemble system prompt + user message
-        │
-        ├─ GPT-4o generate journal text
-        │
-        └─ Update journal_entries (content + status: draft)
-              │
-              ▼
- [Screen 6: Journal View]
+[Screen 6: Journal View]
+  ├─ First fetch may see generating row or transient 404
+  ├─ Poll GET /api/journal/:date every 2s
+  ├─ When draft arrives, render markdown + photos
   ├─ User reads generated journal
   ├─ Optional: edit content
   ├─ Optional: regenerate
   └─ Confirm & Save → status: confirmed
+        │
+        ▼
+Background voice-profile refresh may run after enough confirmed journals accumulate
 ```
 
 ### Flow C: First-Time User
 
 ```
- User visits app
+User visits app
         │
         ▼
- /auth — Sign up / Log in
+/auth — Sign up / Log in
         │
         ▼
- Check: does persona exist?
-  ├─ No → /onboarding (Persona Survey, 11 steps)
-  │         └─ POST /api/persona → /home
-  └─ Yes → /home
+Set auth state locally
+        │
+        ▼
+/auth/resolver
+        │
+        ├─ GET /api/persona returns null  → /onboarding
+        └─ GET /api/persona returns row   → /home
 ```
 
 ---
 
 ## 11. Project File Structure
 
-```
-journie/                              # Monorepo root
-├── client/                           # React + Vite frontend
-│   ├── index.html                    # Vite entry HTML
+```text
+journie/
+├── client/
+│   ├── package.json
+│   ├── index.html
 │   ├── vite.config.ts
 │   ├── tailwind.config.ts
-│   ├── tsconfig.json
-│   ├── .env                          # VITE_* env vars only
-│   ├── public/
-│   │   └── favicon.svg
+│   ├── e2e/                          # Playwright coverage for core flows and regressions
+│   │   ├── helpers/
+│   │   └── *.spec.ts
 │   └── src/
-│       ├── main.tsx                  # React entry point, router setup
-│       ├── App.tsx                   # Root component, route definitions
-│       ├── index.css                 # Tailwind directives + font imports
-│       ├── pages/                    # One file per route/screen
-│       │   ├── auth.tsx              # Login / Signup
-│       │   ├── onboarding.tsx        # Persona survey stepped flow
-│       │   ├── home.tsx              # Capture hub (camera + today's moments)
-│       │   ├── moment-detail.tsx     # Add context + mood to a moment
-│       │   ├── timeline.tsx          # Timeline confirmation + reorder
-│       │   ├── journal-generate.tsx  # Generation loading + review + edit
-│       │   ├── journal-view.tsx      # Read a single day's journal
-│       │   └── journal-history.tsx   # Calendar + past entries list
+│       ├── main.tsx                  # LazyMotion + MotionConfig wrapper
+│       ├── App.tsx                   # Router, protected routes, lazy page loading
+│       ├── index.css
+│       ├── pages/
+│       │   ├── auth.tsx
+│       │   ├── post-auth-resolver.tsx
+│       │   ├── onboarding.tsx
+│       │   ├── home.tsx
+│       │   ├── moment-detail.tsx     # Compatibility route for /moments/new
+│       │   ├── timeline.tsx
+│       │   ├── journal-view.tsx
+│       │   └── journal-history.tsx
 │       ├── components/
-│       │   ├── ui/
-│       │   │   ├── button.tsx
-│       │   │   ├── input.tsx
-│       │   │   ├── textarea.tsx
-│       │   │   ├── modal.tsx
-│       │   │   ├── loading-spinner.tsx
-│       │   │   └── progress-bar.tsx
-│       │   ├── persona-survey.tsx    # Multi-step survey component
-│       │   ├── camera-capture.tsx    # Camera/library input wrapper
-│       │   ├── moment-card.tsx       # Thumbnail card for a moment
-│       │   ├── moment-form.tsx       # Photo review + context + mood form
-│       │   ├── voice-recorder.tsx    # Record button + transcription display
-│       │   ├── mood-selector.tsx     # Horizontal emoji row
-│       │   ├── timeline-list.tsx     # Reorderable timeline of moments
-│       │   ├── journal-renderer.tsx  # Markdown rendering with inline photos
-│       │   ├── journal-editor.tsx    # Editable markdown textarea
-│       │   └── calendar-view.tsx     # Monthly calendar with journal dots
+│       │   ├── camera-capture.tsx
+│       │   ├── home-gallery-page.tsx
+│       │   ├── loading-screen.tsx
+│       │   ├── moment-form.tsx
+│       │   ├── timeline-list.tsx
+│       │   ├── journal-renderer.tsx
+│       │   ├── calendar-view.tsx
+│       │   ├── calendar-day-popover.tsx
+│       │   ├── layout/
+│       │   │   └── AuraShell.tsx
+│       │   └── ui/
+│       │       ├── action-button.tsx
+│       │       └── horizontal-scroll-strip.tsx
 │       ├── lib/
-│       │   ├── supabase.ts           # Supabase client init (auth only on client)
-│       │   ├── api.ts                # Shared API client (wraps fetch, adds auth header)
-│       │   ├── store.ts              # Zustand store (today's moments, auth state)
-│       │   └── utils.ts              # Date formatting, image compression, helpers
+│       │   ├── api.ts
+│       │   ├── supabase.ts
+│       │   ├── store.ts
+│       │   ├── motion.ts
+│       │   ├── route-preloaders.ts
+│       │   ├── journal-navigation.ts
+│       │   ├── use-prefers-reduced-motion.ts
+│       │   └── utils.ts
 │       └── types/
-│           └── index.ts              # Re-exports from shared/types.ts
-│
-├── server/                           # NestJS backend
-│   ├── tsconfig.json
-│   ├── nest-cli.json
-│   ├── .env                          # Server-only secrets (OpenAI key, Supabase service key)
+│           └── index.ts              # Re-export from shared/types.ts
+├── server/
+│   ├── package.json
 │   └── src/
-│       ├── main.ts                   # NestJS bootstrap, CORS config, global pipes
-│       ├── app.module.ts             # Root module, imports all feature modules
-│       ├── common/
-│       │   ├── guards/
-│       │   │   └── auth.guard.ts     # Validates Supabase JWT, attaches user to request
-│       │   ├── decorators/
-│       │   │   └── current-user.ts   # @CurrentUser() param decorator
-│       │   └── supabase/
-│       │       └── supabase.service.ts  # Supabase client (service role, server-side)
-│       ├── persona/
-│       │   ├── persona.module.ts
-│       │   ├── persona.controller.ts # POST /api/persona, GET /api/persona
-│       │   ├── persona.service.ts    # Persona CRUD logic
-│       │   └── dto/
-│       │       └── create-persona.dto.ts
-│       ├── moments/
-│       │   ├── moments.module.ts
-│       │   ├── moments.controller.ts # POST/GET/PATCH/DELETE /api/moments, PATCH /api/moments/reorder
-│       │   ├── moments.service.ts    # Moment CRUD + photo upload logic
-│       │   └── dto/
-│       │       ├── create-moment.dto.ts
-│       │       ├── update-moment.dto.ts
-│       │       └── reorder-moments.dto.ts
-│       ├── transcribe/
-│       │   ├── transcribe.module.ts
-│       │   ├── transcribe.controller.ts  # POST /api/transcribe
-│       │   └── transcribe.service.ts     # Whisper API call
-│       ├── journal/
-│       │   ├── journal.module.ts
-│       │   ├── journal.controller.ts     # POST /api/journal/generate, GET/PATCH /api/journal/:date
-│       │   ├── journal.service.ts        # Journal CRUD
-│       │   └── generation/
-│       │       ├── generation.service.ts # Full AI pipeline: vision + context assembly + text gen
-│       │       ├── vision.service.ts     # GPT-4o photo description
-│       │       └── prompts.ts            # All prompt templates (system + user)
+│       ├── main.ts
+│       ├── app.module.ts
 │       ├── ai/
 │       │   ├── ai.module.ts
-│       │   └── openai.service.ts         # OpenAI client singleton
+│       │   └── openai.service.ts
+│       ├── common/
+│       │   ├── common.module.ts
+│       │   ├── health.controller.ts
+│       │   ├── guards/
+│       │   │   └── auth.guard.ts
+│       │   ├── decorators/
+│       │   │   └── current-user.ts
+│       │   └── supabase/
+│       │       └── supabase.service.ts
+│       ├── persona/
+│       ├── moments/
+│       ├── transcribe/
+│       ├── journal/
+│       │   ├── journal.controller.ts
+│       │   ├── journal.service.ts
+│       │   ├── dto/
+│       │   └── generation/
+│       │       ├── generation.service.ts
+│       │       ├── vision.service.ts
+│       │       ├── voice-profile.service.ts
+│       │       └── prompts.ts
 │       └── types/
-│           └── index.ts                  # Re-exports from shared/types.ts
-│
-├── shared/                           # Shared types between client and server
-│   └── types.ts                      # Canonical type definitions — both client and server import from here
-│
+│           └── index.ts
+├── shared/
+│   └── types.ts
 ├── supabase/
 │   └── migrations/
-│       └── 001_initial_schema.sql    # Database schema (Section 5)
-│
-├── package.json                      # Root package.json (workspace scripts)
-├── pnpm-workspace.yaml               # pnpm workspace config
-├── .gitignore
+│       └── 001_initial_schema.sql
+├── scripts/
+│   ├── dev.ps1                       # Windows-safe local dev entrypoint
+│   └── dev-client.ps1
+├── package.json
+├── pnpm-workspace.yaml
 └── README.md
 ```
 
@@ -1186,12 +1051,14 @@ journie/                              # Monorepo root
 ```json
 {
   "scripts": {
-    "dev": "concurrently \"pnpm --filter client dev\" \"pnpm --filter server start:dev\"",
+    "dev": "pwsh -NoProfile -File scripts/dev.ps1",
     "dev:client": "pnpm --filter client dev",
     "dev:server": "pnpm --filter server start:dev",
     "build:client": "pnpm --filter client build",
     "build:server": "pnpm --filter server build",
-    "build": "pnpm build:client && pnpm build:server"
+    "build": "pnpm build:client && pnpm build:server",
+    "test:e2e": "pnpm --filter client test:e2e",
+    "test:smoke": "pnpm --filter client test:e2e:smoke"
   }
 }
 ```
@@ -1216,10 +1083,10 @@ VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJ...
 
 # Backend API
-VITE_API_URL=http://localhost:3001/api
+VITE_API_URL=http://127.0.0.1:3001/api
 ```
 
-`VITE_` prefix = exposed to the browser via Vite. Only public keys go here.
+`VITE_API_URL` is optional in development; the client defaults to `/api` if it is omitted. `VITE_` prefix = exposed to the browser via Vite. Only public keys go here.
 
 ### Server (`server/.env`)
 
@@ -1232,8 +1099,9 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...     # Full DB access, never expose to client
 OPENAI_API_KEY=sk-...
 
 # Server config
+HOST=127.0.0.1
 PORT=3001
-CLIENT_URL=http://localhost:5173      # For CORS allowlist
+CLIENT_URL=http://127.0.0.1:5173      # For CORS allowlist
 ```
 
 All server env vars are secret. None are exposed to the browser.
@@ -1245,14 +1113,15 @@ All server env vars are secret. None are exposed to the browser.
 ### Build (hackathon MVP)
 
 - [x] Supabase auth (email/password)
-- [x] Persona survey (5 questions + free text + confirmation)
-- [x] Home screen with camera capture + library import
-- [x] Moment creation with photos + text context + mood
+- [x] Persona survey (11 steps + hardcoded voice preview)
+- [x] Home screen with live camera, library import, and below-the-fold gallery page
+- [x] Moment review overlay with photos + text context + mood
 - [x] Voice recording → Whisper transcription
 - [x] Timeline confirmation with drag-to-reorder
-- [x] AI journal generation (full pipeline)
-- [x] Journal view + edit + confirm
-- [x] Journal history with calendar view
+- [x] AI journal generation (async pipeline with deterministic fallback path)
+- [x] Journal view + edit + confirm + regenerate
+- [x] Journal history with month-scoped calendar archive + day popover
+- [x] Voice-profile learning from confirmed journals and edit diffs
 
 ### Skip (post-hackathon)
 
@@ -1279,9 +1148,11 @@ These are minimum error handling requirements for the hackathon build:
 - **Network offline:** Show a top banner "You're offline" when `navigator.onLine` is false. Disable destructive actions (save, generate). Re-enable automatically when back online.
 
 ### Server-Side
-- **OpenAI failures** (timeout, rate limit, 500): Return a clear error to the client. Set journal status to `draft` with `content = "Generation failed — tap Regenerate to try again."` so the user isn't stuck on a `generating` spinner forever.
+- **OpenAI failures:** Vision, transcription, and journal generation all degrade gracefully. If OpenAI is unavailable or misconfigured, the app falls back to deterministic photo descriptions, transcripts, and journal text instead of hard failing.
+- **Unrecoverable generation failures:** Set journal status to `draft` with `content = "Generation failed — tap Regenerate to try again."` so the user isn't stuck on a `generating` spinner forever.
 - **Supabase Storage failures:** Return 500 with `{ error: "Photo upload failed" }`. The client retries.
 - **Rate limiting on `/api/journal/generate`:** Max 3 generation requests per user per day per date. Return 429 if exceeded. This prevents accidental OpenAI credit burn from spam-tapping "Regenerate".
+- **Schema drift protection:** If `generated_content` or `voice_profiles` is missing, the server logs warnings and continues in reduced-capability mode instead of failing the request.
 
 ### General
 - Never silently swallow errors. Log all server-side errors with enough context to debug (user_id, endpoint, error message).

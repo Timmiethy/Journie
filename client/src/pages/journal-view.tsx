@@ -10,6 +10,13 @@ import { JournalRenderer } from '../components/journal-renderer';
 import { useStore } from '../lib/store';
 import { tapMotionProps } from '../lib/motion';
 import { ActionButton, TextButton } from '../components/ui/action-button';
+import { LoadingScreen } from '../components/loading-screen';
+import {
+  getJournalHeaderDestination,
+  getJournalPrimaryDestination,
+  getJournalRouteState,
+  getJournalSecondaryDestination,
+} from '../lib/journal-navigation';
 import type { JournalEntry, MomentWithPhotos } from '../types';
 
 const POLL_MS = 2000;
@@ -30,10 +37,9 @@ export function JournalViewPage() {
   const [loadingFailed, setLoadingFailed] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const pollingErrorShownRef = useRef(false);
-
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const startTimeRef = useRef(0);
-  const optimisticGenerating = Boolean((location.state as { optimisticGenerating?: boolean } | null)?.optimisticGenerating);
+  const routeState = getJournalRouteState(location.state);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -126,7 +132,7 @@ export function JournalViewPage() {
       }
 
       if (
-        optimisticGenerating &&
+        routeState.optimisticGenerating &&
         journalResult.reason instanceof ApiError &&
         journalResult.reason.status === 404 &&
         date
@@ -151,7 +157,7 @@ export function JournalViewPage() {
       cancelled = true;
       stopPolling();
     };
-  }, [date, loadJournal, loadMoments, optimisticGenerating, startPolling, stopPolling]);
+  }, [date, loadJournal, loadMoments, routeState.optimisticGenerating, startPolling, stopPolling]);
 
   const allPhotos = useMemo(
     () => moments.flatMap((moment) => moment.photos.map((photo) => photo.photo_url)),
@@ -161,6 +167,16 @@ export function JournalViewPage() {
   const dateLabel = date
     ? format(new Date(`${date}T12:00:00`), 'MMMM d, yyyy - EEEE')
     : '';
+
+  const headerDestination = getJournalHeaderDestination(routeState.source, journal?.status ?? 'confirmed');
+  const primaryDestination = getJournalPrimaryDestination();
+  const secondaryDestination = getJournalSecondaryDestination(
+    routeState.source,
+    journal?.status ?? 'confirmed',
+  );
+  const hasStickyBar = Boolean(
+    journal && (journal.status === 'draft' || (journal.status === 'confirmed' && !editing)),
+  );
 
   const enterEditMode = async () => {
     if (!date || !journal) return;
@@ -209,7 +225,7 @@ export function JournalViewPage() {
 
     setSaving(true);
     try {
-      await api.journal.generate(date, true);
+      await api.journal.generate(date, true, moments.map((moment) => moment.id));
       setJournal((current) => (current ? { ...current, status: 'generating' } : current));
       setEditing(false);
       setLoadingFailed(false);
@@ -222,14 +238,35 @@ export function JournalViewPage() {
   };
 
   if (loading) {
-    return <div className="min-h-screen bg-abyss-900" />;
+    return (
+      <LoadingScreen
+        eyebrow="assembling your journal"
+        title="Lining up the day before we show it."
+        description="We are pulling the photos, text, and journal state together so this page lands fully formed."
+      />
+    );
   }
 
   if (!journal) {
     return (
       <AuraShell>
-        <div className="min-h-screen flex items-center justify-center px-6">
-          <p className="font-sans text-sm text-film-500">journal not found.</p>
+        <div className="min-h-screen flex items-center justify-center px-4 sm:px-6">
+          <div className="max-w-[28rem] rounded-[24px] border border-white/8 bg-abyss-900/80 px-5 py-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:rounded-[28px] sm:px-6 sm:py-7">
+            <p className="font-sans text-[10px] uppercase tracking-[0.24em] text-film-500">
+              journal missing
+            </p>
+            <p className="mt-3 font-sans text-xl font-medium leading-tight text-film-900 sm:text-2xl">
+              There is no journal for this day yet.
+            </p>
+            <p className="mt-3 font-sans text-sm leading-6 text-film-700">
+              Head home, capture a few moments, then generate the journal once the day has material.
+            </p>
+            <div className="mt-6">
+              <ActionButton onClick={() => navigate('/home')}>
+                back home
+              </ActionButton>
+            </div>
+          </div>
         </div>
       </AuraShell>
     );
@@ -237,11 +274,16 @@ export function JournalViewPage() {
 
   return (
     <AuraShell>
-      <div className={`min-h-screen flex flex-col ${journal.status === 'draft' ? 'pb-24 safe-bottom' : 'pb-8 safe-bottom'}`}>
-        <div className="flex items-center justify-between px-6 safe-top pb-6">
-          <motion.button type="button" onClick={() => navigate(-1)} {...tapMotionProps}>
-            <ChevronLeft className="h-5 w-5 text-film-700 hover:text-film-900 transition-colors" />
-          </motion.button>
+      <div className={`min-h-screen flex flex-col ${hasStickyBar ? 'pb-24 safe-bottom' : 'pb-8 safe-bottom'}`}>
+        <div className="flex items-center justify-between gap-3 px-4 safe-top pb-4 sm:px-6 sm:pb-6">
+          <TextButton
+            type="button"
+            onClick={() => navigate(headerDestination.to)}
+            className="inline-flex items-center gap-2 whitespace-nowrap no-underline"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            {headerDestination.label}
+          </TextButton>
           <span className="font-sans text-[11px] uppercase tracking-widest text-film-700 text-center">
             {dateLabel}
           </span>
@@ -258,12 +300,12 @@ export function JournalViewPage() {
               </span>
             </TextButton>
           ) : (
-            <div className="w-10" />
+            <div className="w-[92px]" />
           )}
         </div>
 
         {editing ? (
-          <div className="px-6 flex-1">
+          <div className="flex-1 px-4 sm:px-6">
             <textarea
               value={editContent}
               onChange={(event) => setEditContent(event.target.value)}
@@ -280,7 +322,7 @@ export function JournalViewPage() {
             />
 
             {journal.status === 'generating' && loadingFailed ? (
-              <div className="px-6 pb-8 text-center">
+              <div className="px-4 pb-8 text-center sm:px-6">
                 <p className="font-sans text-sm text-aura-rough">Something went wrong.</p>
                 <motion.button
                   type="button"
@@ -298,7 +340,7 @@ export function JournalViewPage() {
       </div>
 
       {journal.status === 'draft' ? (
-        <div className="fixed bottom-0 left-0 right-0 mx-auto flex max-w-[480px] gap-3 rounded-t-[24px] border border-abyss-700/80 bg-abyss-900/92 p-4 backdrop-blur-md">
+        <div className="fixed bottom-0 left-0 right-0 mx-auto flex max-w-[480px] gap-3 rounded-t-[24px] border border-white/8 bg-abyss-900/92 p-3.5 backdrop-blur-md sm:p-4">
           <ActionButton
             onClick={handleConfirm}
             disabled={saving || !isOnline}
@@ -333,6 +375,26 @@ export function JournalViewPage() {
               </span>
             </ActionButton>
           )}
+        </div>
+      ) : null}
+
+      {journal.status === 'confirmed' && !editing ? (
+        <div className="fixed bottom-0 left-0 right-0 mx-auto flex max-w-[480px] gap-3 rounded-t-[24px] border border-white/8 bg-abyss-900/92 p-3.5 backdrop-blur-md sm:p-4">
+          <ActionButton
+            onClick={() => navigate(primaryDestination.to)}
+            className="flex-1"
+          >
+            {primaryDestination.label}
+          </ActionButton>
+          {secondaryDestination ? (
+            <ActionButton
+              onClick={() => navigate(secondaryDestination.to)}
+              variant="secondary"
+              className="px-6"
+            >
+              {secondaryDestination.label}
+            </ActionButton>
+          ) : null}
         </div>
       ) : null}
 

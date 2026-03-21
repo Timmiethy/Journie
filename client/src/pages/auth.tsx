@@ -61,7 +61,7 @@ export function AuthPage() {
       <div className="flex min-h-screen items-center justify-center px-5 py-10">
         <div className="w-full rounded-[28px] border border-abyss-700/80 bg-abyss-900/85 px-6 py-8 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-sm">
           {/* Brand */}
-          <h1 className="font-serif text-4xl font-medium text-film-900 tracking-tight text-center mb-2">
+          <h1 className="mb-2 text-center font-sans text-[2.4rem] font-semibold tracking-[0.04em] text-film-900">
             journie
           </h1>
           <p className="font-sans text-sm text-film-700 tracking-[0.15em] uppercase text-center mb-10">

@@ -82,7 +82,7 @@ export class GenerationService {
     private openaiService: OpenaiService,
   ) {}
 
-  async generate(userId: string, date: string, regenerate = false) {
+  async generate(userId: string, date: string, regenerate = false, momentIds?: string[]) {
     this.enforceRateLimit(userId, date);
 
     const supabase = this.supabaseService.getClient();
@@ -110,12 +110,17 @@ export class GenerationService {
       throw journalError;
     }
 
-    void this.runGenerationPipeline(userId, date, regenerate);
+    void this.runGenerationPipeline(userId, date, regenerate, momentIds);
 
     return { journal_id: journal.id, status: 'generating' };
   }
 
-  private async runGenerationPipeline(userId: string, date: string, regenerate: boolean) {
+  private async runGenerationPipeline(
+    userId: string,
+    date: string,
+    regenerate: boolean,
+    momentIds?: string[],
+  ) {
     try {
       const [persona, moments, recentJournals, voiceProfile, editDiffs] = await Promise.all([
         this.personaService.findByUserId(userId),
@@ -125,12 +130,14 @@ export class GenerationService {
         this.voiceProfileService.getRecentEditDiffs(userId),
       ]);
 
+      const orderedMoments = this.orderMomentsByIds(moments as MomentLike[], momentIds);
+
       if (!persona) {
         throw new BadRequestException({ error: 'Persona not found' });
       }
 
       const describedMoments = await Promise.all(
-        (moments as MomentLike[]).map(async (moment, index) => ({
+        orderedMoments.map(async (moment, index) => ({
           index,
           time: format(new Date(moment.captured_at), 'h:mm a'),
           mood: moment.mood ?? null,
@@ -267,6 +274,33 @@ export class GenerationService {
     );
 
     return parts.length > 0 ? parts.join('\n') : null;
+  }
+
+  private orderMomentsByIds(moments: MomentLike[], momentIds?: string[]): MomentLike[] {
+    if (!momentIds || momentIds.length === 0) {
+      return moments;
+    }
+
+    const orderIndexById = new Map(momentIds.map((id, index) => [id, index]));
+
+    return [...moments].sort((left, right) => {
+      const leftIndex = orderIndexById.get(left.id);
+      const rightIndex = orderIndexById.get(right.id);
+
+      if (leftIndex === undefined && rightIndex === undefined) {
+        return 0;
+      }
+
+      if (leftIndex === undefined) {
+        return 1;
+      }
+
+      if (rightIndex === undefined) {
+        return -1;
+      }
+
+      return leftIndex - rightIndex;
+    });
   }
 
   private firstWords(content: string, wordCount: number): string {

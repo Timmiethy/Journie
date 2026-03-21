@@ -10,6 +10,8 @@ import { TimelineList } from '../components/timeline-list';
 import { tapMotionProps } from '../lib/motion';
 import { motion } from 'framer-motion';
 import { ActionButton } from '../components/ui/action-button';
+import { createJournalRouteState } from '../lib/journal-navigation';
+import { preloadJournalViewPage } from '../lib/route-preloaders';
 import type { MomentWithPhotos } from '../types';
 
 export function TimelinePage() {
@@ -68,11 +70,10 @@ export function TimelinePage() {
       toast.error(error instanceof Error ? error.message : 'failed to save timeline order');
     });
 
-    const generationPromise = api.journal.generate(date);
+    const generationPromise = api.journal.generate(date, false, orderedIds);
+    void preloadJournalViewPage();
     navigate(`/journal/${date}`, {
-      state: {
-        optimisticGenerating: true,
-      },
+      state: createJournalRouteState('timeline', { optimisticGenerating: true }),
     });
 
     void generationPromise.catch((error: unknown) => {
@@ -103,25 +104,54 @@ export function TimelinePage() {
             <p className="font-sans text-[10px] uppercase tracking-[0.2em] text-film-500">
               sequence
             </p>
-            <p className="mt-2 font-serif text-lg text-film-900">
+            <p className="mt-2 font-sans text-base leading-6 text-film-900">
               Drag moments until the order feels like the day you want to remember.
             </p>
           </div>
         </div>
 
-        <div className="relative flex-1 before:absolute before:left-[27px] before:top-4 before:bottom-20 before:w-px before:bg-abyss-600/60">
-          <TimelineList
-            items={moments}
-            deletingId={deletingId}
-            onChange={setMoments}
-            onDelete={handleDelete}
-          />
+        <div
+          className={`relative flex-1 ${
+            moments.length > 0
+              ? 'before:absolute before:left-[27px] before:top-4 before:bottom-20 before:w-px before:bg-abyss-600/60'
+              : ''
+          }`}
+        >
+          {moments.length > 0 ? (
+            <TimelineList
+              items={moments}
+              deletingId={deletingId}
+              onChange={setMoments}
+              onDelete={handleDelete}
+            />
+          ) : (
+            <div className="px-6 pt-6">
+              <div className="rounded-[26px] border border-white/8 bg-abyss-900/72 px-5 py-6 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+                <p className="font-sans text-[10px] uppercase tracking-[0.22em] text-film-500">
+                  no moments yet
+                </p>
+                <p className="mt-3 font-sans text-lg font-medium leading-tight text-film-900">
+                  There is nothing to sequence until you capture something first.
+                </p>
+                <p className="mt-3 font-sans text-sm leading-6 text-film-700">
+                  Head back home, capture a few moments, then return once the day has real material to shape.
+                </p>
+                <div className="mt-5">
+                  <ActionButton onClick={() => navigate('/home')}>
+                    back home
+                  </ActionButton>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {moments.length > 0 && (
         <ActionButton
           onClick={handleGenerate}
+          onMouseEnter={() => void preloadJournalViewPage()}
+          onFocus={() => void preloadJournalViewPage()}
           disabled={!isOnline}
           pending={generating}
           pendingLabel="opening journal..."
