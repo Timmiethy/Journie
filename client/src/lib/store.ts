@@ -38,15 +38,23 @@ interface AppState {
   clearUser: () => void;
   isOnline: boolean;
   setOnlineStatus: (isOnline: boolean) => void;
+  todayMomentsDate: string | null;
   todayMoments: MomentWithPhotos[];
-  setTodayMoments: (moments: MomentWithPhotos[]) => void;
-  addMoment: (moment: MomentWithPhotos) => void;
-  removeMoment: (id: string) => void;
+  setTodayMoments: (date: string, moments: MomentWithPhotos[]) => void;
+  addMoment: (date: string, moment: MomentWithPhotos) => void;
+  removeMoment: (date: string, id: string) => void;
   currentAura: string;
   updateAura: (moments: MomentWithPhotos[]) => void;
   calendarPopover: CalendarPopoverState | null;
   setCalendarPopover: (popover: CalendarPopoverState) => void;
   clearCalendarPopover: () => void;
+}
+
+export function getTodayMomentsForDate(
+  state: Pick<AppState, 'todayMomentsDate' | 'todayMoments'>,
+  date: string,
+) {
+  return state.todayMomentsDate === date ? state.todayMoments : [];
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -57,30 +65,47 @@ export const useStore = create<AppState>((set) => ({
     set({
       userId: null,
       displayName: null,
+      todayMomentsDate: null,
       todayMoments: [],
       currentAura: DEFAULT_AURA,
       calendarPopover: null,
     }),
   isOnline: typeof navigator === 'undefined' ? true : navigator.onLine,
   setOnlineStatus: (isOnline) => set({ isOnline }),
+  todayMomentsDate: null,
   todayMoments: [],
-  setTodayMoments: (moments) =>
+  setTodayMoments: (date, moments) =>
     set({
+      todayMomentsDate: date,
       todayMoments: moments,
       currentAura: getAuraFromMoments(moments),
     }),
-  addMoment: (moment) =>
+  addMoment: (date, moment) =>
     set((state) => {
+      if (state.todayMomentsDate !== date) {
+        return {
+          todayMomentsDate: date,
+          todayMoments: [moment],
+          currentAura: getAuraFromMoments([moment]),
+        };
+      }
+
       const updated = [...state.todayMoments, moment];
       return {
+        todayMomentsDate: date,
         todayMoments: updated,
         currentAura: getAuraFromMoments(updated),
       };
     }),
-  removeMoment: (id) =>
+  removeMoment: (date, id) =>
     set((state) => {
+      if (state.todayMomentsDate !== date) {
+        return state;
+      }
+
       const updated = state.todayMoments.filter((moment) => moment.id !== id);
       return {
+        todayMomentsDate: date,
         todayMoments: updated,
         currentAura: getAuraFromMoments(updated),
       };

@@ -4,13 +4,14 @@ import { expect, test } from '@playwright/test';
 import {
   createConfirmedUser,
   loginWithPassword,
+  validationDirectory,
 } from './helpers/app-flow.ts';
 
 test.use({
   viewport: { width: 430, height: 932 },
 });
 
-const screenshotDir = path.resolve('client/test-results/validation/component-4');
+const screenshotDir = path.join(validationDirectory, 'component-4');
 
 test('onboarding transition container stays non-zero and rapid next does not double-advance', async ({ page }) => {
   test.setTimeout(60000);
@@ -32,6 +33,29 @@ test('onboarding transition container stays non-zero and rapid next does not dou
   const { email, password } = await createConfirmedUser(page.request);
 
   await loginWithPassword(page, email, password, '**/onboarding');
+  await expect(page.getByTestId('onboarding-step-label')).toHaveText(/step 1 of 5/i);
+
+  const questionTypography = await page.getByRole('heading', {
+    name: /if we opened your camera roll right now/i,
+  }).evaluate((element) => {
+    const styles = window.getComputedStyle(element);
+    return {
+      fontFamily: styles.fontFamily,
+    };
+  });
+  expect(questionTypography.fontFamily).toMatch(/Lora|serif/i);
+
+  const optionSurface = await page.getByRole('button', { name: /unhinged memes/i }).evaluate((element) => {
+    const styles = window.getComputedStyle(element);
+    return {
+      borderTopWidth: styles.borderTopWidth,
+      borderLeftWidth: styles.borderLeftWidth,
+    };
+  });
+  expect(optionSurface).toEqual({
+    borderTopWidth: '0px',
+    borderLeftWidth: '0px',
+  });
 
   await page.getByRole('button', { name: /unhinged memes/i }).click();
   await page.screenshot({
@@ -82,7 +106,7 @@ test('onboarding transition container stays non-zero and rapid next does not dou
     });
   });
 
-  await page.getByRole('button', { name: /^next$/i }).dblclick();
+  await page.getByTestId('onboarding-next-button').dblclick();
 
   const heights = await heightsPromise;
   expect(Math.min(...heights)).toBeGreaterThan(0);

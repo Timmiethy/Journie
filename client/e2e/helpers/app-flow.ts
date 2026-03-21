@@ -26,7 +26,10 @@ function readEnvFile(filePath: string): Record<string, string> {
 
 const helperDirectory = path.dirname(fileURLToPath(import.meta.url));
 export const serverEnv = readEnvFile(path.resolve(helperDirectory, '../../../server/.env'));
-export const validationDirectory = path.resolve(helperDirectory, '../../../tasks/validation');
+export const validationDirectory = path.resolve(
+  helperDirectory,
+  '../../../output/client-playwright/validation',
+);
 export const pngBuffer = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9pRyxu8AAAAASUVORK5CYII=',
   'base64',

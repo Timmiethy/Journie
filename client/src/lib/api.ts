@@ -81,7 +81,10 @@ async function request<T>(
   if (res.status === 401) {
     await supabase.auth.signOut();
     useStore.getState().clearUser();
-    window.location.href = '/auth';
+    if (window.location.pathname !== '/auth') {
+      window.history.replaceState(window.history.state, '', '/auth');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
     throw new Error('Session expired');
   }
 

@@ -29,6 +29,8 @@ export function JournalHistoryPage() {
   const todayMonth = startOfMonth(new Date());
   const [entriesByMonth, setEntriesByMonth] = useState<Record<string, JournalListEntry[]>>({});
   const [loadingKeys, setLoadingKeys] = useState<string[]>([]);
+  const [recentEntries, setRecentEntries] = useState<JournalListEntry[]>([]);
+  const [recentLoading, setRecentLoading] = useState(true);
   const [currentMonth, setCurrentMonth] = useState(todayMonth);
   const [isMonthTransitioning, setIsMonthTransitioning] = useState(false);
   const entriesByMonthRef = useRef<Record<string, JournalListEntry[]>>({});
@@ -100,6 +102,39 @@ export function JournalHistoryPage() {
   }, [clearCalendarPopover, loadMonth, todayMonth]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadRecentEntries = async () => {
+      setRecentLoading(true);
+
+      try {
+        const result = await api.journal.list({
+          status: 'confirmed',
+          limit: 8,
+        });
+
+        if (!cancelled) {
+          setRecentEntries(result);
+        }
+      } catch (error: unknown) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'failed to load journals');
+        }
+      } finally {
+        if (!cancelled) {
+          setRecentLoading(false);
+        }
+      }
+    };
+
+    void loadRecentEntries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     clearCalendarPopover();
     void loadMonth(currentMonth);
   }, [clearCalendarPopover, currentMonth, loadMonth]);
@@ -107,13 +142,6 @@ export function JournalHistoryPage() {
   const currentEntries = useMemo(() => {
     return entriesByMonth[getMonthKey(currentMonth)] ?? [];
   }, [currentMonth, entriesByMonth]);
-
-  const recentEntries = useMemo(() => {
-    return Object.values(entriesByMonth)
-      .flat()
-      .sort((left, right) => right.day_date.localeCompare(left.day_date))
-      .slice(0, 8);
-  }, [entriesByMonth]);
 
   const currentMonthKey = getMonthKey(currentMonth);
   const loadingCurrentMonth = loadingKeys.includes(currentMonthKey);
@@ -204,7 +232,11 @@ export function JournalHistoryPage() {
             recent
           </h2>
 
-          {!hasAnyEntries && !loadingCurrentMonth ? (
+          {recentLoading ? (
+            <p className="font-sans text-sm text-film-700">
+              Loading recent journals...
+            </p>
+          ) : !hasAnyEntries && !loadingCurrentMonth ? (
             <div>
               <p className="font-sans text-sm text-film-700">
                 No journals yet. Start capturing moments!

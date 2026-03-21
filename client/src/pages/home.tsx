@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type RefObject } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import { Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
-import { useStore } from '../lib/store';
+import { getTodayMomentsForDate, useStore } from '../lib/store';
 import { formatTime, todayISO } from '../lib/utils';
 import { CameraCapture } from '../components/camera-capture';
 import { HorizontalScrollStrip } from '../components/ui/horizontal-scroll-strip';
@@ -14,6 +14,7 @@ import { MomentForm } from '../components/moment-form';
 import { modalSpring, tapMotionProps, withReducedMotion } from '../lib/motion';
 import { preloadTimelinePage } from '../lib/route-preloaders';
 import { usePrefersReducedMotion } from '../lib/use-prefers-reduced-motion';
+import { useAccessibleOverlay } from '../lib/use-accessible-overlay';
 import type { MomentWithPhotos, Mood } from '../types';
 
 const MOOD_EMOJI: Record<Mood, string> = {
@@ -26,10 +27,12 @@ const MOOD_EMOJI: Record<Mood, string> = {
 
 export function HomePage() {
   const navigate = useNavigate();
-  const todayMoments = useStore((state) => state.todayMoments);
+  const today = todayISO();
+  const todayMoments = useStore((state) => getTodayMomentsForDate(state, today));
   const isOnline = useStore((state) => state.isOnline);
   const shouldReduceMotion = usePrefersReducedMotion();
   const previousQueueCountRef = useRef(0);
+  const momentFormDialogRef = useRef<HTMLDivElement>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [captureQueue, setCaptureQueue] = useState<File[]>([]);
@@ -37,6 +40,7 @@ export function HomePage() {
   const [sheetMotionProgress, setSheetMotionProgress] = useState(0);
   const [selectedMoment, setSelectedMoment] = useState<MomentWithPhotos | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const momentDetailDialogRef = useRef<HTMLDivElement>(null);
   const [viewportHeight, setViewportHeight] = useState(() =>
     typeof window === 'undefined' ? 844 : window.innerHeight,
   );
@@ -49,9 +53,9 @@ export function HomePage() {
 
       for (let attempt = 0; attempt < 4; attempt += 1) {
         try {
-          const moments = await api.moments.list(todayISO());
+          const moments = await api.moments.list(today);
           if (!cancelled) {
-            useStore.getState().setTodayMoments(moments);
+            useStore.getState().setTodayMoments(today, moments);
           }
           return;
         } catch (error: unknown) {
@@ -73,7 +77,7 @@ export function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [today]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -173,7 +177,7 @@ export function HomePage() {
     setDeletingId(momentId);
     try {
       await api.moments.delete(momentId);
-      useStore.getState().removeMoment(momentId);
+      useStore.getState().removeMoment(today, momentId);
       setSelectedMoment(null);
       toast.success('moment deleted');
     } catch (error: unknown) {
@@ -215,20 +219,20 @@ export function HomePage() {
   }, [captureQueue.length, hasOverlayOpen, sheetState]);
 
   useEffect(() => {
-    if (hasOverlayOpen) {
-      return;
-    }
-
-    if (captureQueue.length === 0 && todayMoments.length === 0 && sheetState !== 'collapsed') {
-      setSheetState('collapsed');
-    }
-  }, [captureQueue.length, hasOverlayOpen, sheetState, todayMoments.length]);
-
-  useEffect(() => {
     if (!hasOverlayOpen && captureQueue.length === 0 && todayMoments.length > 0) {
       void preloadTimelinePage();
     }
   }, [captureQueue.length, hasOverlayOpen, todayMoments.length]);
+
+  useAccessibleOverlay(isFormOpen && pendingFiles.length > 0, {
+    containerRef: momentFormDialogRef,
+    onClose: dismissForm,
+  });
+
+  useAccessibleOverlay(Boolean(selectedMoment), {
+    containerRef: momentDetailDialogRef,
+    onClose: () => setSelectedMoment(null),
+  });
 
   return (
     <AuraShell>
@@ -297,11 +301,16 @@ export function HomePage() {
                 />
                 <div className="fixed inset-0 z-50 flex items-end justify-center pointer-events-none">
                   <motion.div
+                    ref={momentFormDialogRef}
                     initial={{ opacity: 0, y: 28 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 18 }}
                     transition={modalSpring}
-                    className="pointer-events-auto flex min-h-[100svh] w-full max-w-[480px] flex-col bg-abyss-900/95 backdrop-blur-2xl"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Moment form"
+                    tabIndex={-1}
+                    className="pointer-events-auto flex min-h-[100svh] w-full max-w-[480px] flex-col"
                   >
                     <MomentForm
                       initialFiles={pendingFiles}
@@ -322,6 +331,7 @@ export function HomePage() {
 
       {selectedMoment ? (
         <MomentDetailModal
+          dialogRef={momentDetailDialogRef}
           moment={selectedMoment}
           deleting={deletingId === selectedMoment.id}
           isOnline={isOnline}
@@ -342,12 +352,14 @@ function interpolate(from: number, to: number, progress: number) {
 }
 
 function MomentDetailModal({
+  dialogRef,
   moment,
   deleting,
   isOnline,
   onClose,
   onDelete,
 }: {
+  dialogRef: RefObject<HTMLDivElement>;
   moment: MomentWithPhotos;
   deleting: boolean;
   isOnline: boolean;
@@ -357,14 +369,22 @@ function MomentDetailModal({
   const note = moment.text_context || moment.voice_transcript;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end">
-      <div className="w-full max-w-[480px] mx-auto rounded-t-[30px] border border-white/8 bg-abyss-900/96">
+    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end" onClick={onClose}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Moment details from ${formatTime(moment.captured_at)}`}
+        tabIndex={-1}
+        className="w-full max-w-[480px] mx-auto rounded-t-[30px] border border-white/8 bg-abyss-900/96"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-6 pt-5 pb-4">
           <div>
             <p className="font-sans text-xs uppercase tracking-widest text-film-500">moment</p>
             <p className="font-sans text-sm text-film-700 mt-1">{formatTime(moment.captured_at)}</p>
           </div>
-          <motion.button type="button" onClick={onClose} {...tapMotionProps}>
+          <motion.button type="button" aria-label="Close moment details" onClick={onClose} {...tapMotionProps}>
             <X className="h-5 w-5 text-film-700 hover:text-film-900 transition-colors" />
           </motion.button>
         </div>

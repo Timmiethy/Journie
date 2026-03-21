@@ -47,7 +47,7 @@ test('journie motion flow renders and navigates without console errors', async (
   const { email, password } = await createConfirmedUser(page.request);
   await loginWithPassword(page, email, password, '**/onboarding');
 
-  const nextButton = page.getByRole('button', { name: /^next$/i });
+  const nextButton = page.getByTestId('onboarding-next-button');
   const continueOnboarding = async (optionName: RegExp, nextHeadingName: RegExp) => {
     await expect(page.getByRole('button', { name: optionName })).toBeVisible();
     await page.getByRole('button', { name: optionName }).click();
@@ -66,8 +66,11 @@ test('journie motion flow renders and navigates without console errors', async (
   await continueOnboarding(/mostly solo/i, /tell the ai anything else/i);
   await page.locator('textarea').fill('Motion validation user for the frontend flow.');
   await expect(page.getByText(/preview/i)).toBeVisible();
-  await page.getByRole('button', { name: /looks good, let's go/i }).click();
-  await page.waitForURL('**/home');
+  await expect(nextButton).toHaveText(/enter journie/i);
+  await expect(nextButton).toBeEnabled();
+  const homeNavigation = page.waitForURL('**/home');
+  await nextButton.click();
+  await homeNavigation;
 
   await expect(page.getByRole('button', { name: /^journal$/i })).toBeVisible();
   await page.screenshot({ path: path.join(validationDirectory, '02-home.png'), fullPage: true });
@@ -83,10 +86,10 @@ test('journie motion flow renders and navigates without console errors', async (
   await page.getByRole('button', { name: /^good$/i }).click();
   await page.getByPlaceholder("what's happening?").fill('Coffee, code, and a deterministic motion test.');
   await page.screenshot({ path: path.join(validationDirectory, '04-moment-context.png'), fullPage: true });
-  await page.getByRole('button', { name: /save moment/i }).click();
+  await page.getByTestId('moment-save-button').click();
   await page.getByText(/^review$/i).waitFor({ state: 'hidden', timeout: 15000 });
 
-  const startJournalingButton = page.getByRole('button', { name: /start journal/i });
+  const startJournalingButton = page.getByTestId('home-start-journal-button');
   await expect(startJournalingButton).toBeVisible();
   await startJournalingButton.click();
   await page.waitForURL('**/timeline');
@@ -153,7 +156,6 @@ test('journie motion flow renders and navigates without console errors', async (
     const confirmResponse = await confirmResponsePromise;
     expect(confirmResponse.ok()).toBeTruthy();
   }
-  await page.getByRole('button', { name: /^back home$/i }).click();
   await page.waitForURL('**/home');
   await page.getByRole('button', { name: /^journal$/i }).click();
   await page.waitForURL('**/journals');

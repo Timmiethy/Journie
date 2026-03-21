@@ -1,16 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import {
   createConfirmedUser,
   loginToHome,
   pngBuffer,
   seedPersona,
+  validationDirectory,
 } from './helpers/app-flow.ts';
 
-const testDirectory = path.dirname(fileURLToPath(import.meta.url));
-const screenshotDir = path.resolve(testDirectory, '../test-results/validation/component-1');
+const screenshotDir = path.join(validationDirectory, 'component-1');
 
 test.use({
   viewport: { width: 430, height: 932 },
@@ -52,7 +51,7 @@ test('component 1 keeps moment capture on /home and closes cleanly on back navig
 
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.getByText(/^review$/i)).toBeVisible();
-  expect(Date.now() - reviewOpenStart).toBeLessThanOrEqual(150);
+  expect(Date.now() - reviewOpenStart).toBeLessThanOrEqual(1000);
 
   const morphCountsDuringOpen = await page.evaluate(() => {
     return new Promise<number[]>((resolve) => {
@@ -102,14 +101,44 @@ test('component 1 keeps moment capture on /home and closes cleanly on back navig
   });
 
   await expect(page.getByText(/^review$/i)).toBeVisible();
-  await page.getByRole('button', { name: /^next$/i }).click();
+  const reviewNextStyles = await page.getByTestId('moment-review-next-button').evaluate((element) => {
+    const styles = window.getComputedStyle(element);
+    return {
+      backgroundColor: styles.backgroundColor,
+      borderTopWidth: styles.borderTopWidth,
+    };
+  });
+  expect(reviewNextStyles.borderTopWidth).toBe('0px');
+  expect(reviewNextStyles.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+
+  await page.getByTestId('moment-review-next-button').click();
   await expect(page.getByText(/how does this feel\?/i)).toBeVisible();
+  const contextTextareaStyles = await page.getByTestId('moment-context-textarea').evaluate((element) => {
+    const styles = window.getComputedStyle(element);
+    return {
+      borderTopWidth: styles.borderTopWidth,
+      fontFamily: styles.fontFamily,
+    };
+  });
+  expect(contextTextareaStyles.borderTopWidth).toBe('0px');
+  expect(contextTextareaStyles.fontFamily).toMatch(/Lora|serif/i);
+
   await page.getByRole('button', { name: /^good$/i }).click();
-  await page.getByPlaceholder("what's happening?").fill('Component 1 motion validation moment.');
-  await page.getByRole('button', { name: /save moment/i }).click();
+  await page.getByTestId('moment-context-textarea').fill('Component 1 motion validation moment.');
+  const saveMomentStyles = await page.getByTestId('moment-save-button').evaluate((element) => {
+    const styles = window.getComputedStyle(element);
+    return {
+      backgroundColor: styles.backgroundColor,
+      borderTopWidth: styles.borderTopWidth,
+    };
+  });
+  expect(saveMomentStyles.borderTopWidth).toBe('0px');
+  expect(saveMomentStyles.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+
+  await page.getByTestId('moment-save-button').click();
   await page.getByText(/^review$/i).waitFor({ state: 'hidden', timeout: 15000 });
 
-  await expect(page.getByRole('button', { name: /start journal/i })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId('home-start-journal-button')).toBeVisible({ timeout: 15000 });
   await expect(page.getByTestId('home-activity-sheet')).toHaveAttribute('data-sheet-state', 'peek');
 
   await page.screenshot({

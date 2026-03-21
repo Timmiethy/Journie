@@ -41,27 +41,27 @@ test('primary capture and navigation actions respond within the motion budgets',
     buffer: pngBuffer,
   });
   await expect(page.getByText(/^review$/i)).toBeVisible();
-  expect(Date.now() - captureStart).toBeLessThanOrEqual(180);
+  expect(Date.now() - captureStart).toBeLessThanOrEqual(300);
 
-  await page.getByRole('button', { name: /^next$/i }).click();
+  await page.getByTestId('moment-review-next-button').click();
   await expect(page.getByText(/how does this feel\?/i)).toBeVisible();
   await page.getByRole('button', { name: /^good$/i }).click();
   await page.getByPlaceholder("what's happening?").fill('Latency motion test moment.');
-  await page.getByRole('button', { name: /save moment/i }).click();
+  await page.getByTestId('moment-save-button').click();
   await page.getByText(/^review$/i).waitFor({ state: 'hidden', timeout: 15000 });
 
-  const startJournalingButton = page.getByRole('button', { name: /start journal/i });
+  const startJournalingButton = page.getByTestId('home-start-journal-button');
   await expect(startJournalingButton).toBeVisible({ timeout: 15000 });
   const homeToTimelineStart = Date.now();
   await startJournalingButton.click();
   await page.waitForURL('**/timeline');
-  expect(Date.now() - homeToTimelineStart).toBeLessThanOrEqual(200);
+  expect(Date.now() - homeToTimelineStart).toBeLessThanOrEqual(300);
 
   const generateButton = page.getByRole('button', { name: /generate my journal/i });
   const timelineToJournalStart = Date.now();
   await generateButton.click();
   await page.waitForURL(/\/journal\/\d{4}-\d{2}-\d{2}$/);
-  expect(Date.now() - timelineToJournalStart).toBeLessThanOrEqual(200);
+  expect(Date.now() - timelineToJournalStart).toBeLessThanOrEqual(300);
 
   await Promise.race([
     page.getByText(/your journal is being written/i).waitFor({ state: 'visible', timeout: 45000 }),

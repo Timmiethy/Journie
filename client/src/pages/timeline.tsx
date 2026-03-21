@@ -12,16 +12,17 @@ import { motion } from 'framer-motion';
 import { ActionButton } from '../components/ui/action-button';
 import { createJournalRouteState } from '../lib/journal-navigation';
 import { preloadJournalViewPage } from '../lib/route-preloaders';
+import { getTodayMomentsForDate } from '../lib/store';
 import type { MomentWithPhotos } from '../types';
 
 export function TimelinePage() {
   const navigate = useNavigate();
-  const storeMoments = useStore((state) => state.todayMoments);
+  const date = todayISO();
+  const storeMoments = useStore((state) => getTodayMomentsForDate(state, date));
   const isOnline = useStore((state) => state.isOnline);
   const [moments, setMoments] = useState<MomentWithPhotos[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
-  const date = todayISO();
 
   useEffect(() => {
     if (storeMoments.length > 0) {
@@ -32,7 +33,7 @@ export function TimelinePage() {
     api.moments
       .list(date)
       .then((result) => {
-        useStore.getState().setTodayMoments(result);
+        useStore.getState().setTodayMoments(date, result);
         setMoments(result);
       })
       .catch((error: unknown) => {
@@ -49,7 +50,7 @@ export function TimelinePage() {
       await api.moments.delete(id);
       const updated = moments.filter((moment) => moment.id !== id);
       setMoments(updated);
-      useStore.getState().removeMoment(id);
+      useStore.getState().removeMoment(date, id);
       toast.success('moment deleted');
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'failed to delete moment');
@@ -64,7 +65,7 @@ export function TimelinePage() {
     setGenerating(true);
 
     const orderedIds = moments.map((moment) => moment.id);
-    useStore.getState().setTodayMoments(moments);
+    useStore.getState().setTodayMoments(date, moments);
 
     void api.moments.reorder(date, orderedIds).catch((error: unknown) => {
       toast.error(error instanceof Error ? error.message : 'failed to save timeline order');

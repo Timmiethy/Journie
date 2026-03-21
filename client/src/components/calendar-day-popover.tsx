@@ -5,6 +5,7 @@ import { X } from 'lucide-react';
 import { spring, tapMotionProps, withReducedMotion } from '../lib/motion';
 import { useStore } from '../lib/store';
 import { usePrefersReducedMotion } from '../lib/use-prefers-reduced-motion';
+import { useAccessibleOverlay } from '../lib/use-accessible-overlay';
 import { ActionButton } from './ui/action-button';
 import { createJournalRouteState } from '../lib/journal-navigation';
 import { preloadJournalViewPage } from '../lib/route-preloaders';
@@ -41,6 +42,12 @@ export function CalendarDayPopover() {
       translateUp: !placeBelow,
     };
   }, [calendarPopover]);
+
+  useAccessibleOverlay(Boolean(calendarPopover), {
+    containerRef: popoverRef,
+    lockBodyScroll: false,
+    onClose: clearCalendarPopover,
+  });
 
   useEffect(() => {
     if (!calendarPopover) {
@@ -88,6 +95,10 @@ export function CalendarDayPopover() {
       ref={popoverRef}
       key={calendarPopover.date}
       data-calendar-popover="true"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Journal preview for ${calendarPopover.label}`}
+      tabIndex={-1}
       className="fixed z-[100] overflow-hidden rounded-[26px] border border-white/10 bg-[#101010] shadow-[0_28px_80px_rgba(0,0,0,0.55)] ring-1 ring-white/5 backdrop-blur-md"
       initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 8 }}
       animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
@@ -104,7 +115,7 @@ export function CalendarDayPopover() {
           <p className="font-sans text-[10px] uppercase tracking-[0.2em] text-film-500">day snapshot</p>
           <p className="font-sans text-sm text-film-900 mt-1">{calendarPopover.label}</p>
         </div>
-        <m.button type="button" onClick={clearCalendarPopover} {...tapMotionProps}>
+        <m.button type="button" aria-label="Close day snapshot" onClick={clearCalendarPopover} {...tapMotionProps}>
           <X className="h-4 w-4 text-film-700" />
         </m.button>
       </div>

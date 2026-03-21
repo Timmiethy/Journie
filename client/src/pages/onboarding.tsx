@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { AuraShell } from '../components/layout/AuraShell';
-import { ActionButton, TextButton } from '../components/ui/action-button';
+import { TextButton } from '../components/ui/action-button';
 import { spring, tapMotionProps, withReducedMotion } from '../lib/motion';
 import { usePrefersReducedMotion } from '../lib/use-prefers-reduced-motion';
 import type { AttentionFilter, LifeChapter, TonePreset, DailyPerson } from '../types';
@@ -186,18 +186,17 @@ export function OnboardingPage() {
       case 0:
         return (
           <StepShell question="if we opened your camera roll right now, what takes up the most space?">
-            {ATTENTION_OPTIONS.map((o) => (
-              <TextLinkOption
-                key={o.value}
-                selected={persona.attention_filter === o.value}
-                onClick={() => setPersona((p) => ({ ...p, attention_filter: o.value }))}
-              >
-                <span className="font-medium">{o.label}</span>
-                <span className="mt-1 block font-sans text-sm text-film-500">
-                  {o.description}
-                </span>
-              </TextLinkOption>
-            ))}
+            <div className="flex w-full flex-col gap-6">
+              {ATTENTION_OPTIONS.map((o) => (
+                <EditorialOption
+                  key={o.value}
+                  selected={persona.attention_filter === o.value}
+                  onClick={() => setPersona((p) => ({ ...p, attention_filter: o.value }))}
+                  title={o.label}
+                  description={o.description}
+                />
+              ))}
+            </div>
           </StepShell>
         );
 
@@ -205,15 +204,17 @@ export function OnboardingPage() {
       case 1:
         return (
           <StepShell question="how does this chapter of your life feel?">
-            {CHAPTER_OPTIONS.map((o) => (
-              <TextLinkOption
-                key={o.value}
-                selected={persona.life_chapter === o.value}
-                onClick={() => setPersona((p) => ({ ...p, life_chapter: o.value }))}
-              >
-                <span className="font-serif text-lg italic">{o.label}</span>
-              </TextLinkOption>
-            ))}
+            <div className="flex w-full flex-col gap-6">
+              {CHAPTER_OPTIONS.map((o) => (
+                <EditorialOption
+                  key={o.value}
+                  selected={persona.life_chapter === o.value}
+                  onClick={() => setPersona((p) => ({ ...p, life_chapter: o.value }))}
+                  title={o.label}
+                  titleClassName="font-serif text-xl italic text-film-900"
+                />
+              ))}
+            </div>
           </StepShell>
         );
 
@@ -221,18 +222,17 @@ export function OnboardingPage() {
       case 2:
         return (
           <StepShell question="how should the AI sound?">
-            {TONE_OPTIONS.map((o) => (
-              <TextLinkOption
-                key={o.value}
-                selected={persona.tone_preset === o.value}
-                onClick={() => setPersona((p) => ({ ...p, tone_preset: o.value }))}
-              >
-                <span className="font-medium">{o.label}</span>
-                <span className="mt-1 block font-sans text-sm text-film-500">
-                  {o.description}
-                </span>
-              </TextLinkOption>
-            ))}
+            <div className="flex w-full flex-col gap-6">
+              {TONE_OPTIONS.map((o) => (
+                <EditorialOption
+                  key={o.value}
+                  selected={persona.tone_preset === o.value}
+                  onClick={() => setPersona((p) => ({ ...p, tone_preset: o.value }))}
+                  title={o.label}
+                  description={o.description}
+                />
+              ))}
+            </div>
           </StepShell>
         );
 
@@ -240,23 +240,21 @@ export function OnboardingPage() {
       case 3:
         return (
           <StepShell question="who's usually in your day?">
-            <PillGroup>
+            <div className="flex w-full flex-col gap-6">
               {PEOPLE_OPTIONS.map((o) => (
-                <Pill
+                <EditorialOption
                   key={o.value}
                   selected={persona.daily_people.includes(o.value)}
-                  disabled={false}
                   onClick={() =>
                     setPersona((p) => ({
                       ...p,
                       daily_people: toggleMulti(p.daily_people, o.value),
                     }))
                   }
-                >
-                  {o.label}
-                </Pill>
+                  title={o.label}
+                />
               ))}
-            </PillGroup>
+            </div>
           </StepShell>
         );
 
@@ -264,27 +262,27 @@ export function OnboardingPage() {
       case 4:
         return (
           <StepShell question="tell the AI anything else">
-            <p className="font-sans text-xs text-film-500 text-center mb-6">
-              your name, vibe, current chapter — or skip
+            <p className="font-sans text-xs uppercase tracking-[0.2em] text-film-500">
+              optional context for the voice
             </p>
             <textarea
               value={contextText}
               onChange={(e) => setContextText(e.target.value)}
               placeholder="e.g., I'm Tan, a CS student who lives on cà phê sữa đá..."
-              className="min-h-[120px] w-full resize-none rounded-[22px] border border-abyss-700 bg-abyss-900/60 px-4 py-4 font-sans text-base text-film-900 placeholder:text-film-500 transition-colors duration-200 focus:border-film-700 focus:outline-none"
+              className="mt-6 min-h-[120px] w-full resize-none border-none bg-transparent p-0 font-serif text-2xl leading-[1.6] text-film-900 placeholder:text-film-700/50 focus:outline-none"
             />
             {personaPreview && (
-              <div className="mt-6 mx-auto max-w-[90%] border-t border-abyss-600 pt-6">
-                <p className="font-sans text-[10px] uppercase tracking-[0.22em] text-film-500 text-center mb-3">
+              <div className="mt-8 border-t border-white/6 pt-6">
+                <p className="font-sans text-[10px] uppercase tracking-[0.22em] text-film-500">
                   preview
                 </p>
-                <p className="text-center font-sans text-base leading-relaxed italic text-film-900">
+                <p className="mt-3 max-w-[90%] font-serif text-lg italic leading-[1.7] text-film-900">
                   {personaPreview}
                 </p>
               </div>
             )}
             {error && (
-              <p className="font-sans text-sm text-aura-rough text-center mt-4">{error}</p>
+              <p className="mt-4 font-sans text-sm text-aura-rough">{error}</p>
             )}
           </StepShell>
         );
@@ -309,83 +307,68 @@ export function OnboardingPage() {
 
   return (
     <AuraShell>
-      <div className="min-h-screen flex flex-col px-5 safe-top safe-bottom">
-        {/* Progress dots */}
-        <div className="flex gap-2 items-center justify-center pb-5">
-          {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-            <div
-              key={i}
-              className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
-                i === step
-                  ? 'bg-film-900 scale-125'
-                  : i < step
-                    ? 'bg-film-700'
-                    : 'bg-abyss-600'
-              }`}
-            />
-          ))}
+      <div className="flex min-h-screen flex-col px-6 safe-top safe-bottom">
+        <div className="pt-4">
+          <p
+            data-testid="onboarding-step-label"
+            className="font-sans text-[10px] uppercase tracking-[0.2em] text-film-700"
+          >
+            step {step + 1} of {TOTAL_STEPS}
+          </p>
         </div>
 
-        {/* Step content with animation */}
-        <div className="flex-1 flex items-center">
+        <div className="flex flex-1 flex-col pt-10">
           <m.div
             layout={!shouldReduceMotion}
             transition={withReducedMotion(Boolean(shouldReduceMotion), spring)}
-            className="w-full overflow-hidden rounded-[28px] border border-abyss-700/80 bg-abyss-900/88 shadow-[0_24px_80px_rgba(0,0,0,0.34)]"
+            className="relative flex-1 overflow-hidden"
+            data-testid="survey-step-container"
+            style={stepFrameHeight ? { minHeight: stepFrameHeight } : undefined}
           >
-            <div className="border-b border-abyss-700/80 px-6 py-4">
-              <p className="font-sans text-[10px] uppercase tracking-[0.22em] text-film-500">
-                step {step + 1} of {TOTAL_STEPS}
-              </p>
-            </div>
-
-            <m.div
-              layout={!shouldReduceMotion}
-              transition={withReducedMotion(Boolean(shouldReduceMotion), spring)}
-              className="relative overflow-hidden px-5 py-6"
-              data-testid="survey-step-container"
-              style={stepFrameHeight ? { minHeight: stepFrameHeight } : undefined}
+            <AnimatePresence
+              initial={false}
+              mode="sync"
+              custom={animDir}
+              onExitComplete={() => setTransitioning(false)}
             >
-              <AnimatePresence
-                initial={false}
-                mode="sync"
-                custom={animDir}
-                onExitComplete={() => setTransitioning(false)}
+              <SurveyStepPanel
+                key={step}
+                direction={animDir}
+                onHeightChange={setStepFrameHeight}
+                shouldReduceMotion={Boolean(shouldReduceMotion)}
               >
-                <SurveyStepPanel
-                  key={step}
-                  direction={animDir}
-                  onHeightChange={setStepFrameHeight}
-                  shouldReduceMotion={Boolean(shouldReduceMotion)}
-                >
-                  {renderStep()}
-                </SurveyStepPanel>
-              </AnimatePresence>
-            </m.div>
+                {renderStep()}
+              </SurveyStepPanel>
+            </AnimatePresence>
           </m.div>
         </div>
 
-        {/* Navigation */}
-        <div className="pt-6 space-y-3">
-          <ActionButton
+        <div className="flex items-center justify-between pb-4 pt-6">
+          {step > 0 ? (
+            <TextButton
+              onClick={back}
+              disabled={transitioning}
+              className="text-xs uppercase tracking-[0.18em] no-underline"
+            >
+              back
+            </TextButton>
+          ) : (
+            <div className="w-16" aria-hidden="true" />
+          )}
+          <m.button
+            type="button"
             disabled={!canProceed() || saving || transitioning}
             onClick={handleNext}
-            pending={saving}
-            pendingLabel="saving..."
-            className="w-full"
+            data-testid="onboarding-next-button"
+            className={`font-sans text-sm uppercase tracking-[0.24em] transition-colors duration-200 ${
+              !canProceed() || saving || transitioning
+                ? 'cursor-not-allowed text-film-700/35'
+                : 'text-film-900 hover:text-white'
+            }`}
+            {...tapMotionProps}
           >
-            {step === 4 ? "looks good, let's go" : 'next'}
-          </ActionButton>
-          {step > 0 && (
-            <div className="text-center">
-              <TextButton
-                onClick={back}
-                disabled={transitioning}
-              >
-                back
-              </TextButton>
-            </div>
-          )}
+            {step === 4 ? (saving ? 'entering...' : 'enter journie') : 'next'}
+          </m.button>
         </div>
       </div>
     </AuraShell>
@@ -402,74 +385,62 @@ function StepShell({
   children: ReactNode;
 }) {
   return (
-    <div className="mx-auto w-full">
-      <h2 className="mb-8 text-center font-sans text-[1.85rem] font-medium leading-tight text-film-900 sm:text-[2rem]">
+    <div className="mx-auto flex w-full flex-col justify-center py-2">
+      <h2 className="max-w-[90%] font-serif text-3xl leading-snug text-film-900 sm:text-[2.15rem]">
         {question}
       </h2>
-      {children}
+      <div className="mt-10 w-full">
+        {children}
+      </div>
     </div>
   );
 }
 
-function TextLinkOption({
+function EditorialOption({
   selected,
   onClick,
-  children,
+  title,
+  description,
+  titleClassName = 'font-sans text-lg text-film-900',
+  descriptionClassName = 'mt-1 block font-serif text-sm italic text-film-700',
 }: {
   selected: boolean;
   onClick: () => void;
-  children: ReactNode;
+  title: string;
+  description?: string;
+  titleClassName?: string;
+  descriptionClassName?: string;
 }) {
   return (
     <m.button
       type="button"
       onClick={onClick}
-      className={`block w-full rounded-[22px] border px-4 py-4 text-left font-sans text-base transition-[background-color,border-color,color,transform] duration-150 ${
+      aria-pressed={selected}
+      className={`group w-full text-left transition-opacity duration-300 ${
         selected
-          ? 'border-white/14 bg-white/[0.12] text-film-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur-xl'
-          : 'border-white/8 bg-white/[0.03] text-film-900 hover:border-white/12 hover:bg-white/[0.06]'
+          ? 'opacity-100'
+          : 'opacity-50 hover:opacity-100'
       }`}
       {...tapMotionProps}
     >
-      {children}
-    </m.button>
-  );
-}
-
-function PillGroup({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex flex-wrap gap-3 justify-center max-w-[90%] mx-auto">
-      {children}
-    </div>
-  );
-}
-
-function Pill({
-  selected,
-  disabled,
-  onClick,
-  children,
-}: {
-  selected: boolean;
-  disabled: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <m.button
-      type="button"
-      onClick={onClick}
-      disabled={disabled && !selected}
-      className={`rounded-full border px-4 py-2.5 font-sans text-sm transition-[background-color,border-color,color,opacity,transform] duration-150 capitalize ${
-        selected
-          ? 'border-white/14 bg-white/[0.12] text-film-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_16px_34px_rgba(0,0,0,0.26)] backdrop-blur-xl'
-          : disabled
-            ? 'border-abyss-700 text-film-500 opacity-30 cursor-not-allowed pointer-events-none'
-            : 'border-white/8 bg-white/[0.03] text-film-900 hover:border-white/12 hover:bg-white/[0.06]'
-      }`}
-      {...tapMotionProps}
-    >
-      {children}
+      <div className="flex items-start gap-4">
+        <span
+          aria-hidden="true"
+          className={`mt-3 h-px shrink-0 transition-all duration-300 ${
+            selected
+              ? 'w-7 bg-film-900'
+              : 'w-5 bg-film-700/35 group-hover:bg-film-500/60'
+          }`}
+        />
+        <div className="min-w-0">
+          <span className={titleClassName}>{title}</span>
+          {description ? (
+            <span className={descriptionClassName}>
+              {description}
+            </span>
+          ) : null}
+        </div>
+      </div>
     </m.button>
   );
 }

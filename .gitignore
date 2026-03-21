@@ -24,6 +24,8 @@ npm-debug.log*
 
 # Vite
 client/dist/
+client/test-results/
+client/playwright-report/
 
 # NestJS
 server/dist/

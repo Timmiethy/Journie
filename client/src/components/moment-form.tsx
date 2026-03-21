@@ -83,7 +83,7 @@ export function MomentForm({
     if (!element) return;
 
     element.style.height = 'auto';
-    element.style.height = `${Math.min(element.scrollHeight, 120)}px`;
+    element.style.height = `${Math.max(120, Math.min(element.scrollHeight, 240))}px`;
   }, [text]);
 
   useEffect(() => {
@@ -182,7 +182,7 @@ export function MomentForm({
       form.append('day_date', todayISO());
 
       const result = await api.moments.create(form);
-      useStore.getState().addMoment(result);
+      useStore.getState().addMoment(todayISO(), result);
       onSaved?.(result);
     } catch (error: unknown) {
       setUploadFailed(true);
@@ -197,7 +197,13 @@ export function MomentForm({
   }
 
   return (
-    <>
+    <div
+      className={`flex min-h-[100svh] flex-col ${
+        step === 'context'
+          ? 'bg-[linear-gradient(180deg,rgba(5,5,5,0.72)_0%,rgba(5,5,5,0.62)_100%)] backdrop-blur-[32px]'
+          : 'bg-abyss-900/96 backdrop-blur-2xl'
+      }`}
+    >
       <div className="flex items-center gap-4 px-4 pt-4 pb-3 sm:px-6 sm:pt-6 sm:pb-4">
         <motion.button
           type="button"
@@ -207,7 +213,7 @@ export function MomentForm({
         >
           <X className="h-5 w-5 text-film-700 cursor-pointer hover:text-film-900 transition-colors" />
         </motion.button>
-        <span className="font-sans text-xs text-film-500 mx-auto">
+        <span className="mx-auto font-sans text-[11px] uppercase tracking-[0.2em] text-film-500">
           {step === 'review' ? 'review' : 'context'}
         </span>
         <div className="w-5" />
@@ -249,14 +255,15 @@ export function MomentForm({
               type="button"
               disabled={files.length === 0}
               onClick={() => setStep('context')}
-              className="mt-2 w-full"
+              data-testid="moment-review-next-button"
+              className="mt-2 w-full rounded-none border-none bg-film-900 text-abyss-900 shadow-[0_22px_48px_rgba(255,255,255,0.08)] hover:bg-[#ffffff] hover:text-abyss-900"
             >
               next
             </ActionButton>
           </div>
         ) : (
           <div className="pb-5 sm:pb-6">
-            <p className="mb-3 px-4 font-sans text-[11px] uppercase tracking-widest text-film-500 sm:mb-4 sm:px-6">
+            <p className="mb-3 px-4 font-sans text-xs uppercase tracking-[0.2em] text-film-500 sm:mb-4 sm:px-6">
               how does this feel?
             </p>
             <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
@@ -278,14 +285,18 @@ export function MomentForm({
                       className={`h-6 w-6 rounded-full transition-all duration-200 ${
                         selected
                           ? 'scale-125 shadow-glow'
-                          : 'opacity-40 hover:opacity-70'
+                          : 'opacity-55 hover:opacity-80'
                       }`}
                       style={{
                         backgroundColor: color,
                         '--tw-shadow-color': selected ? `${color}80` : undefined,
                       } as CSSProperties}
                     />
-                    <span className="font-sans text-[10px] text-film-500 uppercase tracking-wide">
+                    <span
+                      className={`font-sans text-[10px] uppercase tracking-[0.18em] ${
+                        selected ? 'text-film-900' : 'text-film-500'
+                      }`}
+                    >
                       {currentMood.label}
                     </span>
                   </motion.button>
@@ -298,9 +309,10 @@ export function MomentForm({
                 ref={textareaRef}
                 value={text}
                 onChange={(event) => setText(event.target.value)}
+                data-testid="moment-context-textarea"
                 placeholder="what's happening?"
-                rows={1}
-                className="w-full resize-none border-b border-abyss-600 bg-transparent py-2.5 font-sans text-base text-film-900 placeholder:text-film-500 transition-colors duration-200 focus:border-film-700 focus:outline-none sm:text-lg"
+                rows={3}
+                className="min-h-[120px] w-full resize-none border-none bg-transparent p-0 font-serif text-2xl leading-[1.65] text-film-900 placeholder:text-film-700/50 focus:outline-none"
               />
             </div>
 
@@ -348,7 +360,8 @@ export function MomentForm({
                 type="button"
                 disabled={saving || !isOnline}
                 onClick={handleSave}
-                className="w-full"
+                data-testid="moment-save-button"
+                className="w-full rounded-none border-none bg-film-900 text-abyss-900 shadow-[0_22px_48px_rgba(255,255,255,0.08)] hover:bg-[#ffffff] hover:text-abyss-900"
               >
                 {saving ? 'saving...' : 'save moment'}
               </ActionButton>
@@ -356,7 +369,7 @@ export function MomentForm({
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
 

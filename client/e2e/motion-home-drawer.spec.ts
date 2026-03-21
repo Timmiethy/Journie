@@ -70,6 +70,27 @@ test('home first viewport stays compact with a collapsed activity sheet when the
   expect(fitsViewport).toBeTruthy();
 });
 
+test('home activity sheet can still open when there are no queued files or moments', async ({ page, request }) => {
+  test.setTimeout(90000);
+
+  const { email, password, userId } = await createConfirmedUser(request);
+  await seedPersona(request, userId);
+  await loginToHome(page, email, password);
+
+  await expectSheetState(page, 'collapsed');
+  await expect(page.getByTestId('home-activity-empty-peek')).toHaveCount(0);
+
+  await page.getByTestId('home-activity-handle').click();
+  await expectSheetState(page, 'peek');
+  await expect(page.getByTestId('home-activity-empty-peek')).toBeVisible();
+  await expect(page.getByTestId('home-start-journal-button')).toHaveCount(0);
+
+  await page.getByTestId('home-activity-handle').click();
+  await expectSheetState(page, 'full');
+  await expect(page.getByTestId('home-gallery-empty')).toBeVisible();
+  await expect(page.getByTestId('home-start-journal-button')).toHaveCount(0);
+});
+
 test('home bottom sheet follows the first pull smoothly, then expands to full on the next interaction', async ({ page, request }) => {
   test.setTimeout(120000);
 
