@@ -1,3 +1,6 @@
+// Mirrored from shared/types.ts — keep in sync.
+// NestJS build does not support imports outside src/ (breaks dist/ structure).
+
 // ─── User & Persona ───
 
 export interface User {
@@ -71,6 +74,58 @@ export interface MomentPhoto {
   created_at: string;
 }
 
+// ─── Tags ───
+
+export interface MomentTag {
+  id: string;
+  moment_id: string;
+  tag: string;
+  category: TagCategory;
+  confidence: number;
+  created_at: string;
+}
+
+export type TagCategory =
+  | 'activity' | 'location' | 'food' | 'social' | 'mood'
+  | 'object' | 'event' | 'hobby' | 'work' | 'health';
+
+export interface DailyTagSummary {
+  id: string;
+  user_id: string;
+  day_date: string;
+  top_tags: Array<{ tag: string; category: TagCategory; score: number }>;
+  tag_counts: Record<string, number>;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Insights & Memory ───
+
+export interface DailyInsight {
+  id: string;
+  user_id: string;
+  day_date: string;
+  insights: Array<{ text: string; confirmed: boolean }>;
+  daily_achievement: string | null;
+  best_photo_url: string | null;
+  best_photo_storage_path: string | null;
+  created_at: string;
+}
+
+export interface UserMemory {
+  id: string;
+  user_id: string;
+  category: MemoryCategory;
+  fact: string;
+  confidence: number;
+  source_date: string;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type MemoryCategory = 'preference' | 'relationship' | 'routine' | 'identity' | 'voice';
+
 // ─── Journal ───
 
 export interface JournalEntry {
@@ -80,26 +135,30 @@ export interface JournalEntry {
   content: string;
   generated_content: string | null;
   status: JournalStatus;
-  generated_at: string;
+  entry_type: JournalEntryType;
+  daily_achievement: string | null;
+  best_photo_url: string | null;
+  generated_at: string | null;
   confirmed_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export type JournalStatus = 'generating' | 'draft' | 'confirmed';
+export type JournalEntryType = 'daily' | 'weekly';
 
-// ─── Voice Profile ───
+// ─── Weekly ───
 
-export interface VoiceProfile {
+export interface WeeklySummary {
   id: string;
   user_id: string;
-  voice_summary: string;
-  preferred_phrases: string[];
-  avoided_phrases: string[];
-  journals_analyzed: number;
-  last_refreshed_at: string | null;
+  week_start: string;
+  week_end: string;
+  top_tags: Array<{ tag: string; category: TagCategory; score: number }>;
+  summary: string;
+  best_photo_url: string | null;
+  stats: Record<string, unknown>;
   created_at: string;
-  updated_at: string;
 }
 
 // ─── Aggregated Types ───

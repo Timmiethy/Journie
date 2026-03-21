@@ -3,6 +3,7 @@ node_modules/
 .playwright-cli/*
 output/*
 scripts/*
+!scripts/dev.mjs
 # Build output
 dist/
 build/

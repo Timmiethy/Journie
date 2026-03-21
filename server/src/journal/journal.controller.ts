@@ -79,10 +79,13 @@ export class JournalsController {
     @Query('to') to?: string,
     @Query('entry_type') entryType?: string,
   ) {
+    const parsedLimit = limit ? parseInt(limit, 10) : 30;
+    const parsedOffset = offset ? parseInt(offset, 10) : 0;
+
     return this.journalService.listByUser(
       user.id,
-      limit ? parseInt(limit) : 30,
-      offset ? parseInt(offset) : 0,
+      Number.isNaN(parsedLimit) || parsedLimit < 1 ? 30 : Math.min(parsedLimit, 100),
+      Number.isNaN(parsedOffset) || parsedOffset < 0 ? 0 : parsedOffset,
       status,
       from,
       to,

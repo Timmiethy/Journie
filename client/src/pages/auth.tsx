@@ -8,6 +8,34 @@ import { AuraShell } from '../components/layout/AuraShell';
 
 type Mode = 'login' | 'signup';
 
+function Logo({ className }: { className?: string }) {
+  return (
+    <div className={className}>
+      <svg viewBox="0 0 120 120" className="w-full h-full">
+        <defs>
+          <linearGradient id="bookGradientAuth" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#F17A74" />
+            <stop offset="100%" stopColor="#F8A740" />
+          </linearGradient>
+        </defs>
+        <g
+          fill="none"
+          stroke="url(#bookGradientAuth)"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <line x1="60" y1="28" x2="60" y2="92" />
+          <path d="M 60 28 Q 42 12 26 28 L 26 72 Q 42 80 60 75" />
+          <path d="M 26 28 Q 10 28 10 42 L 10 78 C 10 90 35 92 60 92" />
+          <path d="M 60 28 Q 78 12 94 28 L 94 72 Q 78 80 60 75" />
+          <path d="M 94 28 Q 110 28 110 42 L 110 78 C 110 90 85 92 60 92" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
 export function AuthPage() {
   const navigate = useNavigate();
   const setUser = useStore((s) => s.setUser);
@@ -61,6 +89,7 @@ export function AuthPage() {
       <div className="flex min-h-screen items-center justify-center px-5 py-10">
         <div className="w-full rounded-[28px] border border-abyss-700/80 bg-abyss-900/85 px-6 py-8 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-sm">
           {/* Brand */}
+          <Logo className="mx-auto mb-4 w-16 h-16" />
           <h1 className="mb-2 text-center font-sans text-[2.4rem] font-semibold tracking-[0.04em] text-film-900">
             journie
           </h1>

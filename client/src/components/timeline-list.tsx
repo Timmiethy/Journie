@@ -52,13 +52,21 @@ export function TimelineList({
 }: TimelineListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragStateRef = useRef<DragState | null>(null);
+  const activeListenersRef = useRef<{
+    move: ((e: PointerEvent) => void) | null;
+    up: (() => void) | null;
+  }>({ move: null, up: null });
   const [scrollTop, setScrollTop] = useState(0);
   const [dragVisual, setDragVisual] = useState<DragVisualState | null>(null);
 
   useEffect(() => {
     return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
+      if (activeListenersRef.current.move) {
+        window.removeEventListener('pointermove', activeListenersRef.current.move);
+      }
+      if (activeListenersRef.current.up) {
+        window.removeEventListener('pointerup', activeListenersRef.current.up);
+      }
     };
   }, []);
 
@@ -111,9 +119,14 @@ export function TimelineList({
   const handlePointerUp = useCallback(() => {
     dragStateRef.current = null;
     setDragVisual(null);
-    window.removeEventListener('pointermove', handlePointerMove);
-    window.removeEventListener('pointerup', handlePointerUp);
-  }, [handlePointerMove]);
+    if (activeListenersRef.current.move) {
+      window.removeEventListener('pointermove', activeListenersRef.current.move);
+    }
+    if (activeListenersRef.current.up) {
+      window.removeEventListener('pointerup', activeListenersRef.current.up);
+    }
+    activeListenersRef.current = { move: null, up: null };
+  }, []);
 
   const beginDrag = useCallback((event: React.PointerEvent, id: string) => {
     event.preventDefault();
@@ -142,6 +155,7 @@ export function TimelineList({
       velocityY: 0,
     });
 
+    activeListenersRef.current = { move: handlePointerMove, up: handlePointerUp };
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
   }, [handlePointerMove, handlePointerUp, items]);

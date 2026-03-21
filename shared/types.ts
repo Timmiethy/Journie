@@ -135,7 +135,7 @@ export interface JournalEntry {
   entry_type: JournalEntryType;
   daily_achievement: string | null;
   best_photo_url: string | null;
-  generated_at: string;
+  generated_at: string | null;
   confirmed_at: string | null;
   created_at: string;
   updated_at: string;

@@ -87,6 +87,8 @@ function isMissingSchemaObject(error: unknown, objectName: string): boolean {
 export class GenerationService {
   private static readonly failureContent = 'Generation failed — tap Regenerate to try again.';
   private static readonly generationAttempts = new Map<string, number[]>();
+  private static readonly inFlightGenerations = new Set<string>();
+  private static lastCleanup = Date.now();
   private readonly logger = new Logger(GenerationService.name);
 
   constructor(
@@ -100,6 +102,14 @@ export class GenerationService {
 
   async generate(userId: string, date: string, regenerate = false, momentIds?: string[]) {
     this.enforceRateLimit(userId, date);
+
+    const flightKey = `${userId}:${date}`;
+    if (GenerationService.inFlightGenerations.has(flightKey)) {
+      throw new HttpException(
+        { error: 'Journal generation already in progress for this date' },
+        HttpStatus.CONFLICT,
+      );
+    }
 
     const supabase = this.supabaseService.getClient();
 
@@ -127,7 +137,10 @@ export class GenerationService {
       throw journalError;
     }
 
-    void this.runGenerationPipeline(userId, date, regenerate, momentIds);
+    GenerationService.inFlightGenerations.add(flightKey);
+    void this.runGenerationPipeline(userId, date, regenerate, momentIds).finally(() => {
+      GenerationService.inFlightGenerations.delete(flightKey);
+    });
 
     return { journal_id: journal.id, status: 'generating' };
   }
@@ -691,6 +704,19 @@ export class GenerationService {
 
     attempts.push(now);
     GenerationService.generationAttempts.set(key, attempts);
+
+    // Periodic cleanup: remove stale entries every hour
+    if (now - GenerationService.lastCleanup > 60 * 60 * 1000) {
+      GenerationService.lastCleanup = now;
+      for (const [mapKey, timestamps] of GenerationService.generationAttempts) {
+        const fresh = timestamps.filter((ts) => ts > dayAgo);
+        if (fresh.length === 0) {
+          GenerationService.generationAttempts.delete(mapKey);
+        } else {
+          GenerationService.generationAttempts.set(mapKey, fresh);
+        }
+      }
+    }
   }
 
   // ─── Fallback journal ───

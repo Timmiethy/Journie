@@ -48,6 +48,7 @@ export function MomentForm({
   const filesRef = useRef<File[]>(initialFiles);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const cancelledRef = useRef(false);
   const addMoreRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -87,7 +88,9 @@ export function MomentForm({
   }, [text]);
 
   useEffect(() => {
+    cancelledRef.current = false;
     return () => {
+      cancelledRef.current = true;
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
@@ -126,6 +129,8 @@ export function MomentForm({
       };
 
       recorder.onstop = async () => {
+        if (cancelledRef.current) return;
+
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
         const audioFile = new File([blob], 'voice.webm', { type: 'audio/webm' });
         const form = new FormData();
@@ -133,9 +138,11 @@ export function MomentForm({
 
         try {
           const result = await api.transcribe.audio(form);
+          if (cancelledRef.current) return;
           setTranscript(result.transcript);
           setText((current) => (current ? `${current} ${result.transcript}` : result.transcript));
         } catch (error: unknown) {
+          if (cancelledRef.current) return;
           toast.error(error instanceof Error ? error.message : "couldn't transcribe audio");
         }
       };

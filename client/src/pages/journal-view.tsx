@@ -213,6 +213,7 @@ export function JournalViewPage() {
       setEditContent(updated.content);
       setEditing(false);
       toast.success('journal saved');
+      navigate('/home');
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'failed to save journal');
     } finally {
