@@ -8,7 +8,9 @@
     "dev:server": "pnpm --filter server start:dev",
     "build:client": "pnpm --filter client build",
     "build:server": "pnpm --filter server build",
-    "build": "pnpm build:client && pnpm build:server"
+    "build": "pnpm build:client && pnpm build:server",
+    "test:e2e": "pnpm --filter client test:e2e",
+    "test:smoke": "pnpm --filter client test:e2e:smoke"
   },
   "devDependencies": {
     "concurrently": "^8"

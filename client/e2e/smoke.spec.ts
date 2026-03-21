@@ -11,6 +11,9 @@ const pngBuffer = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9pRyxu8AAAAASUVORK5CYII=',
   'base64',
 );
+const generationFailureText = 'Generation failed — tap Regenerate to try again.';
+
+test.setTimeout(120000);
 
 test('journie motion flow renders and navigates without console errors', async ({ page }) => {
   test.setTimeout(90000);
@@ -116,19 +119,39 @@ test('journie motion flow renders and navigates without console errors', async (
   const generateResponse = await generateResponsePromise;
   expect([200, 202]).toContain(generateResponse.status());
   await page.waitForURL(/\/journal\/\d{4}-\d{2}-\d{2}$/);
-  await page.waitForLoadState('networkidle');
-  await Promise.race([
-    page.getByText(/we're shaping today's journal/i).waitFor({ state: 'visible', timeout: 45000 }),
-    page.getByRole('button', { name: /confirm & save/i }).waitFor({ state: 'visible', timeout: 45000 }),
-    page.getByRole('button', { name: /edit/i }).waitFor({ state: 'visible', timeout: 45000 }),
-  ]);
+  await expect(
+    page.getByRole('button', { name: /confirm & save/i }),
+  ).toBeVisible({ timeout: 60000 });
+  await expect(page.getByText(generationFailureText)).toHaveCount(0);
+
+  const visibleJournalText = await page.locator('p').evaluateAll((nodes, failureText) => {
+    return nodes
+      .map((node) => node.textContent?.trim() ?? '')
+      .filter((text) => {
+        if (!text) return false;
+        if (text === failureText) return false;
+        if (text === 'Writing your journal...' || text === 'Something went wrong.' || text === 'journal not found.') {
+          return false;
+        }
+        if (/^[A-Z][a-z]+ \d{1,2}, \d{4}/.test(text)) {
+          return false;
+        }
+        if (/^\d{1,2}:\d{2}\s?(AM|PM)$/i.test(text)) {
+          return false;
+        }
+        return true;
+      })
+      .join(' ');
+  }, generationFailureText);
+
+  expect(visibleJournalText).not.toContain(generationFailureText);
+  expect(visibleJournalText.length).toBeGreaterThan(80);
   await page.screenshot({ path: path.join(validationDirectory, '06-journal.png'), fullPage: true });
 
   const confirmButton = page.getByRole('button', { name: /confirm & save/i });
   if (await confirmButton.isVisible()) {
     await confirmButton.click();
   }
-
   await page.goto('/journals');
   await expect(page.getByText(/archive/i)).toBeVisible();
   await expect(page.getByText(/recent/i)).toBeVisible();

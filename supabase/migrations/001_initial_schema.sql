@@ -58,6 +58,7 @@ create table journal_entries (
   user_id uuid references auth.users(id) on delete cascade not null,
   day_date date not null,
   content text not null default '',
+  generated_content text,
   status text not null default 'generating' check (status in ('generating', 'draft', 'confirmed')),
   generated_at timestamptz,
   confirmed_at timestamptz,
@@ -67,11 +68,25 @@ create table journal_entries (
 
 create unique index idx_journal_user_day on journal_entries(user_id, day_date);
 
+-- ─── Voice Profiles ───
+create table voice_profiles (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references auth.users(id) on delete cascade not null unique,
+  voice_summary text not null default '',
+  preferred_phrases text[] not null default '{}',
+  avoided_phrases text[] not null default '{}',
+  journals_analyzed int not null default 0,
+  last_refreshed_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
 -- ─── Row Level Security ───
 alter table personas enable row level security;
 alter table moments enable row level security;
 alter table moment_photos enable row level security;
 alter table journal_entries enable row level security;
+alter table voice_profiles enable row level security;
 
 create policy "Users own their persona" on personas
   for all using (auth.uid() = user_id);
@@ -85,6 +100,9 @@ create policy "Users own their photos" on moment_photos
   );
 
 create policy "Users own their journals" on journal_entries
+  for all using (auth.uid() = user_id);
+
+create policy "Users own their voice profile" on voice_profiles
   for all using (auth.uid() = user_id);
 
 -- ─── Storage bucket policy (run after creating 'moment-photos' bucket) ───

@@ -1,18 +1,31 @@
 // System prompt template for journal generation
 // See docs.md Section 9 for full prompt specs
 
-export function buildSystemPrompt(persona: {
-  writing_style: string;
-  journal_topics: string[];
-  narrative_voice: string;
-  emotional_depth: string;
-  personality_tags: string[];
-  mbti: string | null;
-  occupation: string | null;
-  daily_people: string[];
-  daily_activities: string[];
-  additional_context: string | null;
-}, recentJournalExcerpts: string): string {
+export function buildSystemPrompt(
+  persona: {
+    writing_style: string;
+    journal_topics: string[];
+    narrative_voice: string;
+    emotional_depth: string;
+    personality_tags: string[];
+    mbti: string | null;
+    occupation: string | null;
+    daily_people: string[];
+    daily_activities: string[];
+    additional_context: string | null;
+  },
+  recentJournalExcerpts: string,
+  voiceProfileBlock: string,
+  editDiffsBlock: string,
+): string {
+  const voiceProfileSection = voiceProfileBlock
+    ? `\n\nLEARNED VOICE PROFILE (distilled from the user's journal history — this is the most reliable signal for their voice):\n${voiceProfileBlock}`
+    : '';
+
+  const editCorrectionsSection = editDiffsBlock
+    ? `\n\nRECENT EDIT CORRECTIONS (the user changed these parts of AI-generated drafts — learn from these corrections and avoid repeating the same mistakes):\n${editDiffsBlock}`
+    : '';
+
   return `You are a personal journal writer. You write daily journal entries for a specific person
 based on their captured moments throughout the day.
 
@@ -40,9 +53,11 @@ Use the life context (occupation, people, activities) to make the journal feel g
 in the user's real life. Reference their world naturally — a student's journal mentions
 classes and deadlines, a freelancer's mentions clients and creative blocks. Don't force
 it; only reference what's relevant to the day's moments.
+${voiceProfileSection}
 
 VOICE CALIBRATION (from recent journals):
 ${recentJournalExcerpts || 'No previous journals yet.'}
+${editCorrectionsSection}
 
 RULES:
 1. Write in the exact narrative voice specified (first/second/third person).
@@ -56,7 +71,11 @@ RULES:
 6. Length: 200-500 words depending on number of moments.
 7. Use markdown formatting subtly — no headers, but occasional *emphasis* or line breaks for pacing.
 8. If the user provided text or voice context for a moment, weave their exact words and sentiments into the narrative naturally.
-9. End with a closing reflection or feeling that ties the day together.`;
+9. End with a closing reflection or feeling that ties the day together.
+10. If a learned voice profile is provided, treat it as the highest-priority voice signal.
+    Match the user's specific phrases, sentence patterns, and emotional expression style.
+11. If edit corrections are provided, actively avoid the patterns the user rejected
+    and lean into the patterns they preferred.`;
 }
 
 export function buildUserMessage(moments: Array<{
