@@ -11,6 +11,7 @@ import { SupabaseService } from '../../common/supabase/supabase.service';
 import { PersonaService } from '../../persona/persona.service';
 import { MomentsService } from '../../moments/moments.service';
 import { VisionService } from './vision.service';
+import { VoiceProfileService } from './voice-profile.service';
 import { OpenaiService } from '../../ai/openai.service';
 import { buildSystemPrompt, buildUserMessage } from './prompts';
 
@@ -42,6 +43,30 @@ type JournalLike = {
   content: string;
 };
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message?: unknown }).message ?? '');
+  }
+  return '';
+}
+
+function isMissingSchemaObject(error: unknown, objectName: string): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  const target = objectName.toLowerCase();
+
+  return (
+    message.includes(target) &&
+    (
+      message.includes('does not exist') ||
+      message.includes('could not find') ||
+      message.includes('schema cache')
+    )
+  );
+}
+
 @Injectable()
 export class GenerationService {
   private static readonly failureContent = 'Generation failed — tap Regenerate to try again.';
@@ -53,6 +78,7 @@ export class GenerationService {
     private personaService: PersonaService,
     private momentsService: MomentsService,
     private visionService: VisionService,
+    private voiceProfileService: VoiceProfileService,
     private openaiService: OpenaiService,
   ) {}
 
@@ -84,11 +110,19 @@ export class GenerationService {
       throw journalError;
     }
 
+    void this.runGenerationPipeline(userId, date, regenerate);
+
+    return { journal_id: journal.id, status: 'generating' };
+  }
+
+  private async runGenerationPipeline(userId: string, date: string, regenerate: boolean) {
     try {
-      const [persona, moments, recentJournals] = await Promise.all([
+      const [persona, moments, recentJournals, voiceProfile, editDiffs] = await Promise.all([
         this.personaService.findByUserId(userId),
         this.momentsService.findByDate(userId, date),
         this.fetchRecentJournals(userId, date),
+        this.voiceProfileService.getProfile(userId),
+        this.voiceProfileService.getRecentEditDiffs(userId),
       ]);
 
       if (!persona) {
@@ -110,6 +144,8 @@ export class GenerationService {
       const systemPrompt = buildSystemPrompt(
         persona as PersonaLike,
         this.buildRecentJournalExcerptBlock(recentJournals),
+        this.voiceProfileService.formatProfileForPrompt(voiceProfile),
+        this.voiceProfileService.formatEditDiffsForPrompt(editDiffs),
       );
       const userMessage = buildUserMessage(
         describedMoments,
@@ -133,26 +169,14 @@ export class GenerationService {
       }
 
       await this.updateGeneratedJournal(userId, date, content, regenerate);
-      return { journal_id: journal.id, status: 'generating' };
+
+      // Trigger voice profile refresh check (non-blocking)
+      this.voiceProfileService.maybeRefreshProfile(userId);
     } catch (error) {
-      if (
-        !(error instanceof BadRequestException) &&
-        !(error instanceof HttpException && error.getStatus() === HttpStatus.TOO_MANY_REQUESTS)
-      ) {
-        await this.markGenerationFailure(userId, date, regenerate);
-      }
+      await this.markGenerationFailure(userId, date, regenerate);
       this.logger.error(
         `Journal generation failed for user ${userId}, date ${date}: ${error instanceof Error ? error.message : 'unknown error'}`,
       );
-
-      if (
-        error instanceof BadRequestException ||
-        (error instanceof HttpException && error.getStatus() === HttpStatus.TOO_MANY_REQUESTS)
-      ) {
-        throw error;
-      }
-
-      throw new InternalServerErrorException({ error: 'Journal generation failed' });
     }
   }
 
@@ -180,7 +204,7 @@ export class GenerationService {
       .eq('status', 'confirmed')
       .lt('day_date', date)
       .order('day_date', { ascending: false })
-      .limit(3);
+      .limit(7);
 
     if (error) {
       this.logger.error(
@@ -198,7 +222,7 @@ export class GenerationService {
     }
 
     return journals
-      .map((journal, index) => `[Journal ${index + 1}] ${this.firstWords(journal.content, 100)}`)
+      .map((journal, index) => `[Journal ${index + 1}] ${this.firstWords(journal.content, 150)}`)
       .join('\n\n');
   }
 
@@ -249,13 +273,14 @@ export class GenerationService {
     const supabase = this.supabaseService.getClient();
     const timestamp = new Date().toISOString();
 
-    const { error } = await supabase
+    let { error } = await supabase
       .from('journal_entries')
       .upsert(
         {
           user_id: userId,
           day_date: date,
           content,
+          generated_content: content,
           status: 'draft',
           generated_at: timestamp,
           confirmed_at: null,
@@ -264,6 +289,26 @@ export class GenerationService {
         },
         { onConflict: 'user_id,day_date' },
       );
+
+    if (error && isMissingSchemaObject(error, 'generated_content')) {
+      this.logger.warn('journal_entries.generated_content is missing; preserving original AI output is disabled until the migration is applied');
+      const fallback = await supabase
+        .from('journal_entries')
+        .upsert(
+          {
+            user_id: userId,
+            day_date: date,
+            content,
+            status: 'draft',
+            generated_at: timestamp,
+            confirmed_at: null,
+            updated_at: timestamp,
+            ...(regenerate ? {} : { created_at: timestamp }),
+          },
+          { onConflict: 'user_id,day_date' },
+        );
+      error = fallback.error;
+    }
 
     if (error) {
       this.logger.error(

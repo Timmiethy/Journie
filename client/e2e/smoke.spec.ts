@@ -28,6 +28,9 @@ const pngBuffer = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9pRyxu8AAAAASUVORK5CYII=',
   'base64',
 );
+const generationFailureText = 'Generation failed — tap Regenerate to try again.';
+
+test.setTimeout(120000);
 
 test('journie smoke flow renders and navigates core pages', async ({ page }) => {
   const email = `codex-smoke-${Date.now()}@example.com`;
@@ -107,10 +110,36 @@ test('journie smoke flow renders and navigates core pages', async ({ page }) => 
   await page.waitForURL('**/timeline');
 
   await page.getByRole('button', { name: /generate my journal/i }).click();
-  await page.waitForURL(/\/journal\/\d{4}-\d{2}-\d{2}\/generate$/);
   await page.waitForURL(/\/journal\/\d{4}-\d{2}-\d{2}$/);
+  await expect(
+    page.getByRole('button', { name: /confirm & save/i }),
+  ).toBeVisible({ timeout: 60000 });
+  await expect(page.getByText(generationFailureText)).toHaveCount(0);
 
-  await page.getByRole('button', { name: /looks good, save it/i }).click();
+  const visibleJournalText = await page.locator('p').evaluateAll((nodes, failureText) => {
+    return nodes
+      .map((node) => node.textContent?.trim() ?? '')
+      .filter((text) => {
+        if (!text) return false;
+        if (text === failureText) return false;
+        if (text === 'Writing your journal...' || text === 'Something went wrong.' || text === 'journal not found.') {
+          return false;
+        }
+        if (/^[A-Z][a-z]+ \d{1,2}, \d{4}/.test(text)) {
+          return false;
+        }
+        if (/^\d{1,2}:\d{2}\s?(AM|PM)$/i.test(text)) {
+          return false;
+        }
+        return true;
+      })
+      .join(' ');
+  }, generationFailureText);
+
+  expect(visibleJournalText).not.toContain(generationFailureText);
+  expect(visibleJournalText.length).toBeGreaterThan(80);
+
+  await page.getByRole('button', { name: /confirm & save/i }).click();
   await page.goto('/journals');
   await expect(page).toHaveURL(/\/journals$/);
   await expect(page.getByText(/archive/i)).toBeVisible();

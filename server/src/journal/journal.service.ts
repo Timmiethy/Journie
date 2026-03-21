@@ -1,6 +1,30 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../common/supabase/supabase.service';
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message?: unknown }).message ?? '');
+  }
+  return '';
+}
+
+function isMissingSchemaObject(error: unknown, objectName: string): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  const target = objectName.toLowerCase();
+
+  return (
+    message.includes(target) &&
+    (
+      message.includes('does not exist') ||
+      message.includes('could not find') ||
+      message.includes('schema cache')
+    )
+  );
+}
+
 @Injectable()
 export class JournalService {
   private readonly logger = new Logger(JournalService.name);
@@ -33,13 +57,49 @@ export class JournalService {
       updateData.confirmed_at = null;
     }
 
-    const { data, error } = await supabase
+    // If user is editing content, preserve the original AI-generated version
+    // so we can learn from the diff later
+    if (updates.content !== undefined) {
+      const { data: existing, error: existingError } = await supabase
+        .from('journal_entries')
+        .select('generated_content, content')
+        .eq('user_id', userId)
+        .eq('day_date', date)
+        .single();
+
+      if (existingError && !isMissingSchemaObject(existingError, 'generated_content')) {
+        throw existingError;
+      }
+
+      if (existingError && isMissingSchemaObject(existingError, 'generated_content')) {
+        this.logger.warn('journal_entries.generated_content is missing; edit-diff preservation is disabled until the migration is applied');
+      } else if (existing && !existing.generated_content && existing.content) {
+        // Only set generated_content if it hasn't been set yet
+        // (first edit after generation)
+        updateData.generated_content = existing.content;
+      }
+    }
+
+    let { data, error } = await supabase
       .from('journal_entries')
       .update(updateData)
       .eq('user_id', userId)
       .eq('day_date', date)
       .select()
       .single();
+
+    if (error && isMissingSchemaObject(error, 'generated_content')) {
+      delete updateData.generated_content;
+      const fallback = await supabase
+        .from('journal_entries')
+        .update(updateData)
+        .eq('user_id', userId)
+        .eq('day_date', date)
+        .select()
+        .single();
+      data = fallback.data;
+      error = fallback.error;
+    }
 
     if (error) throw error;
     return data;
