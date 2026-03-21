@@ -115,22 +115,13 @@ export class GenerationService {
         describedMoments,
         format(new Date(`${date}T12:00:00`), 'EEEE, MMMM d, yyyy'),
       );
-
-      const openai = this.openaiService.getClientOrThrow();
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-        temperature: 0.8,
-        max_tokens: 1500,
-      });
-
-      const content = completion.choices[0]?.message?.content?.trim();
-      if (!content) {
-        throw new InternalServerErrorException({ error: 'Journal generation failed' });
-      }
+      const content = await this.generateJournalContent(
+        date,
+        persona as PersonaLike,
+        describedMoments,
+        systemPrompt,
+        userMessage,
+      );
 
       await this.updateGeneratedJournal(userId, date, content, regenerate);
       return { journal_id: journal.id, status: 'generating' };
@@ -211,11 +202,29 @@ export class GenerationService {
     const signedUrls: string[] = [];
 
     for (const photo of photos) {
+      if (!photo.storage_path) {
+        if (photo.photo_url) {
+          signedUrls.push(photo.photo_url);
+          continue;
+        }
+
+        this.logger.warn('Skipping photo without storage_path and photo_url during generation.');
+        continue;
+      }
+
       const { data, error } = await supabase.storage
         .from('moment-photos')
         .createSignedUrl(photo.storage_path, 60 * 60);
 
       if (error || !data?.signedUrl) {
+        if (photo.photo_url) {
+          this.logger.warn(
+            `Falling back to stored photo_url for ${photo.storage_path}: ${error?.message ?? 'missing signed URL'}`,
+          );
+          signedUrls.push(photo.photo_url);
+          continue;
+        }
+
         this.logger.error(
           `Failed to sign photo ${photo.storage_path}: ${error?.message ?? 'missing signed URL'}`,
         );
@@ -291,5 +300,94 @@ export class GenerationService {
         },
         { onConflict: 'user_id,day_date' },
       );
+  }
+
+  private async generateJournalContent(
+    date: string,
+    persona: PersonaLike,
+    describedMoments: Array<{
+      index: number;
+      time: string;
+      mood: string | null;
+      photoDescriptions: string;
+      notes: string | null;
+    }>,
+    systemPrompt: string,
+    userMessage: string,
+  ): Promise<string> {
+    const openai = this.openaiService.getClient();
+    if (!openai) {
+      return this.buildFallbackJournal(date, persona, describedMoments);
+    }
+
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        temperature: 0.8,
+        max_tokens: 1500,
+      });
+
+      const content = completion.choices[0]?.message?.content?.trim();
+      if (content) {
+        return content;
+      }
+    } catch (error) {
+      if (this.openaiService.isConfigurationError(error)) {
+        this.openaiService.disableClient();
+      }
+      this.logger.warn(
+        `Falling back to deterministic journal for ${date}: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+    }
+
+    return this.buildFallbackJournal(date, persona, describedMoments);
+  }
+
+  private buildFallbackJournal(
+    date: string,
+    persona: PersonaLike,
+    describedMoments: Array<{
+      time: string;
+      mood: string | null;
+      photoDescriptions: string;
+      notes: string | null;
+    }>,
+  ): string {
+    const dateLabel = format(new Date(`${date}T12:00:00`), 'EEEE, MMMM d, yyyy');
+    const voiceLabel = this.resolveVoiceLabel(persona.narrative_voice as NarrativeVoice);
+    const intro =
+      persona.writing_style === 'poetic'
+        ? `On ${dateLabel}, the day unfolded in small, memorable fragments.`
+        : `On ${dateLabel}, ${voiceLabel} moved through a day worth keeping.`;
+
+    const momentParagraphs = describedMoments.map((moment) => {
+      const moodText = moment.mood ? ` The mood felt ${moment.mood}.` : '';
+      const noteText = moment.notes ? ` ${moment.notes}` : '';
+      const photoText = moment.photoDescriptions ? ` ${moment.photoDescriptions}` : '';
+      return `Around ${moment.time}, a moment was captured.${moodText}${noteText}${photoText}`.trim();
+    });
+
+    const closing =
+      persona.emotional_depth === 'deep'
+        ? 'Even in this fallback draft, the shape of the day still feels personal enough to return to.'
+        : 'It is a simple draft, but it still keeps the outline of the day intact.';
+
+    return [intro, ...momentParagraphs, closing].join('\n\n');
+  }
+
+  private resolveVoiceLabel(voice: NarrativeVoice): string {
+    switch (voice) {
+      case 'second_person':
+        return 'you';
+      case 'third_person':
+        return 'they';
+      case 'first_person':
+      default:
+        return 'I';
+    }
   }
 }

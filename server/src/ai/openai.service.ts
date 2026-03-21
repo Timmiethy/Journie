@@ -28,4 +28,20 @@ export class OpenaiService {
 
     return this.client;
   }
+
+  disableClient() {
+    this.client = null;
+  }
+
+  isConfigurationError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    return (
+      error.message.includes('Incorrect API key') ||
+      error.message.includes('invalid_api_key') ||
+      error.message.includes('401')
+    );
+  }
 }

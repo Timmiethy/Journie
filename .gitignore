@@ -1,6 +1,8 @@
 # Dependencies
 node_modules/
-
+.playwright-cli/*
+output/*
+scripts/*
 # Build output
 dist/
 build/

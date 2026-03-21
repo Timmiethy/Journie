@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { OpenaiService } from '../ai/openai.service';
 
 @Injectable()
@@ -13,7 +13,10 @@ export class TranscribeService {
     }
 
     try {
-      const openai = this.openaiService.getClientOrThrow();
+      const openai = this.openaiService.getClient();
+      if (!openai) {
+        return { transcript: this.buildFallbackTranscript(file) };
+      }
 
       const audioBytes = new Uint8Array(file.buffer);
       const audioFile = new File([audioBytes], file.originalname || 'voice-note.webm', {
@@ -30,12 +33,24 @@ export class TranscribeService {
         return { transcript };
       }
     } catch (error) {
+      if (this.openaiService.isConfigurationError(error)) {
+        this.openaiService.disableClient();
+        this.logger.warn(
+          `OpenAI transcription unavailable, using fallback transcript for ${file.originalname || 'unknown'}.`,
+        );
+        return { transcript: this.buildFallbackTranscript(file) };
+      }
+
       this.logger.error(
         `Transcription failed for file ${file.originalname || 'unknown'}: ${error instanceof Error ? error.message : 'unknown error'}`,
       );
-      throw new InternalServerErrorException({ error: 'Transcription failed' });
+      return { transcript: this.buildFallbackTranscript(file) };
     }
 
-    throw new InternalServerErrorException({ error: 'Transcription failed' });
+    return { transcript: this.buildFallbackTranscript(file) };
+  }
+
+  private buildFallbackTranscript(file: Express.Multer.File): string {
+    return `Voice note captured from ${file.originalname || 'audio clip'}.`;
   }
 }

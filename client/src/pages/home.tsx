@@ -1,11 +1,15 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Image, Trash2, X } from 'lucide-react';
+import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
+import { BookOpen, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { useStore } from '../lib/store';
-import { formatTime, todayISO, compressImage } from '../lib/utils';
+import { formatTime, todayISO } from '../lib/utils';
+import { CameraCapture } from '../components/camera-capture';
 import { AuraShell } from '../components/layout/AuraShell';
+import { MomentForm } from '../components/moment-form';
+import { modalSpring, tapMotionProps } from '../lib/motion';
 import type { MomentWithPhotos, Mood } from '../types';
 
 const MOOD_EMOJI: Record<Mood, string> = {
@@ -17,23 +21,22 @@ const MOOD_EMOJI: Record<Mood, string> = {
 };
 
 function getGreeting(): string {
-  const h = new Date().getHours();
-  if (h >= 5 && h <= 11) return 'morning';
-  if (h >= 12 && h <= 17) return 'afternoon';
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour <= 11) return 'morning';
+  if (hour >= 12 && hour <= 17) return 'afternoon';
   return 'evening';
 }
 
 export function HomePage() {
   const navigate = useNavigate();
-  const displayName = useStore((s) => s.displayName);
-  const todayMoments = useStore((s) => s.todayMoments);
-  const isOnline = useStore((s) => s.isOnline);
+  const displayName = useStore((state) => state.displayName);
+  const todayMoments = useStore((state) => state.todayMoments);
+  const isOnline = useStore((state) => state.isOnline);
   const [showFlash, setShowFlash] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [selectedMoment, setSelectedMoment] = useState<MomentWithPhotos | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const libraryInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api.moments
@@ -41,35 +44,66 @@ export function HomePage() {
       .then((moments) => {
         useStore.getState().setTodayMoments(moments);
       })
-      .catch((err: unknown) => {
-        toast.error(err instanceof Error ? err.message : 'failed to load today\'s moments');
+      .catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : "failed to load today's moments");
       });
   }, []);
 
+  useEffect(() => {
+    if (!isFormOpen) return undefined;
+
+    const handlePopState = () => {
+      setIsFormOpen(false);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isFormOpen]);
+
+  const clearMomentFormHistoryState = useCallback(() => {
+    const historyState = (window.history.state as { modal?: string } | null) ?? {};
+    if (!('modal' in historyState)) {
+      return;
+    }
+
+    const { modal: _modal, ...nextState } = historyState;
+    window.history.replaceState(nextState, '');
+  }, []);
+
+  const dismissForm = useCallback(() => {
+    if (!isFormOpen) return;
+
+    if ((window.history.state as { modal?: string } | null)?.modal === 'moment-form') {
+      window.history.back();
+      return;
+    }
+
+    setIsFormOpen(false);
+  }, [isFormOpen]);
+
+  const handleSaved = useCallback(() => {
+    clearMomentFormHistoryState();
+    setIsFormOpen(false);
+  }, [clearMomentFormHistoryState]);
+
+  const openForm = useCallback((files: File[]) => {
+    setPendingFiles(files);
+    setIsFormOpen(true);
+    window.history.pushState({ ...(window.history.state ?? {}), modal: 'moment-form' }, '');
+  }, []);
+
   const handleFiles = useCallback(
-    async (fileList: FileList | null, isCamera: boolean) => {
+    (fileList: FileList | null, source: 'camera' | 'library') => {
       if (!fileList || fileList.length === 0) return;
 
-      if (isCamera) {
+      if (source === 'camera') {
         setShowFlash(true);
-        setTimeout(() => setShowFlash(false), 600);
+        window.setTimeout(() => setShowFlash(false), 220);
       }
 
-      try {
-        const files = Array.from(fileList);
-        const compressed = await Promise.all(files.map(compressImage));
-
-        setTimeout(
-          () => {
-            navigate('/moments/new', { state: { files: compressed } });
-          },
-          isCamera ? 400 : 0,
-        );
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : 'failed to prepare photos');
-      }
+      openForm(Array.from(fileList));
     },
-    [navigate],
+    [openForm],
   );
 
   const handleDeleteMoment = async (momentId: string) => {
@@ -81,8 +115,8 @@ export function HomePage() {
       useStore.getState().removeMoment(momentId);
       setSelectedMoment(null);
       toast.success('moment deleted');
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'failed to delete moment');
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'failed to delete moment');
     } finally {
       setDeletingId(null);
     }
@@ -94,74 +128,58 @@ export function HomePage() {
         <div className="fixed inset-0 bg-white z-50 animate-flash pointer-events-none" />
       )}
 
-      <div className="min-h-screen flex flex-col pb-24">
-        <div className="flex justify-between items-start px-6 pt-8">
-          <span className="font-sans text-sm text-film-700">
+      <div className="min-h-screen flex flex-col pb-28 safe-bottom">
+        <div className="flex justify-between items-start px-6 safe-top">
+          <span className="max-w-[58%] truncate font-sans text-sm text-film-700">
             Good {getGreeting()}, {displayName ?? 'there'}
           </span>
-          <button
+          <motion.button
+            type="button"
             onClick={() => navigate('/journals')}
             className="inline-flex items-center gap-2 font-sans text-xs uppercase tracking-widest text-film-700 border border-abyss-600 px-3 py-1 hover:border-film-700 hover:text-film-900 transition-all duration-200"
+            {...tapMotionProps}
           >
             <BookOpen className="h-3.5 w-3.5" />
             My Journal
-          </button>
+          </motion.button>
         </div>
 
-        <div
-          className="aspect-[4/3] w-full relative overflow-hidden border-y border-abyss-600 bg-black mt-6 cursor-pointer"
-          onClick={() => cameraInputRef.current?.click()}
-        >
-          <CornerMarker position="top-left" />
-          <CornerMarker position="top-right" />
-          <CornerMarker position="bottom-left" />
-          <CornerMarker position="bottom-right" />
-
-          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-film-900/20 text-xl font-sans font-thin pointer-events-none select-none">
-            +
-          </span>
-
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            ref={cameraInputRef}
-            onChange={(e) => {
-              handleFiles(e.target.files, true);
-              e.target.value = '';
-            }}
-          />
-        </div>
-
-        <div className="flex items-center justify-center gap-8 py-6">
-          <button
-            onClick={() => libraryInputRef.current?.click()}
-            className="h-10 w-10 border border-abyss-600 flex items-center justify-center hover:border-film-700 transition-colors duration-200 rounded-none"
-          >
-            <Image className="h-5 w-5 text-film-700" strokeWidth={1.5} />
-          </button>
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            ref={libraryInputRef}
-            onChange={(e) => {
-              handleFiles(e.target.files, false);
-              e.target.value = '';
-            }}
+        <LayoutGroup id="capture-flow">
+          <CameraCapture
+            disabled={isFormOpen}
+            onFilesSelected={handleFiles}
           />
 
-          <button
-            onClick={() => cameraInputRef.current?.click()}
-            className="h-20 w-20 rounded-full border-[2px] border-film-900 flex items-center justify-center active:scale-90 transition-transform duration-200"
-          >
-            <div className="h-16 w-16 bg-film-900 rounded-full" />
-          </button>
-
-          <div className="h-10 w-10" />
-        </div>
+          <AnimatePresence onExitComplete={() => setPendingFiles([])}>
+            {isFormOpen && pendingFiles.length > 0 && (
+              <>
+                <motion.div
+                  aria-hidden="true"
+                  className="fixed inset-0 z-40 bg-black/75 backdrop-blur-sm"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={dismissForm}
+                />
+                <div className="fixed inset-0 z-50 flex items-end justify-center pointer-events-none">
+                  <motion.div
+                    initial={{ opacity: 0, y: 28 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 18 }}
+                    transition={modalSpring}
+                    className="pointer-events-auto w-full max-w-[480px] min-h-screen bg-abyss-900/95 backdrop-blur-2xl flex flex-col"
+                  >
+                    <MomentForm
+                      initialFiles={pendingFiles}
+                      onClose={dismissForm}
+                      onSaved={handleSaved}
+                    />
+                  </motion.div>
+                </div>
+              </>
+            )}
+          </AnimatePresence>
+        </LayoutGroup>
 
         <div className="flex-1">
           <p className="font-sans text-xs uppercase tracking-widest text-film-500 px-6 mb-3">
@@ -169,10 +187,15 @@ export function HomePage() {
           </p>
 
           {todayMoments.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="font-sans text-sm text-film-500">nothing yet today.</p>
-              <p className="font-sans text-xs text-film-500/60 mt-1">
-                tap the circle to capture a moment
+            <div className="mx-6 rounded-[24px] border border-abyss-700/70 bg-abyss-900/70 px-5 py-6 text-center shadow-[0_18px_48px_rgba(0,0,0,0.24)]">
+              <p className="font-sans text-[11px] uppercase tracking-[0.22em] text-film-500">
+                first moment
+              </p>
+              <p className="mt-3 font-serif text-xl text-film-900">
+                Nothing captured yet. Start with one detail worth keeping.
+              </p>
+              <p className="mt-2 font-sans text-sm text-film-700">
+                Tap the circle or import from your library. The review screen opens immediately.
               </p>
             </div>
           ) : (
@@ -189,14 +212,16 @@ export function HomePage() {
         </div>
       </div>
 
-      {todayMoments.length >= 1 && (
-        <button
+      {todayMoments.length >= 1 && !isFormOpen && pendingFiles.length === 0 && (
+        <motion.button
+          type="button"
           onClick={() => navigate('/timeline')}
           disabled={!isOnline}
-          className="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto bg-film-900 text-abyss-900 font-sans font-bold text-sm uppercase tracking-widest py-4 text-center rounded-none disabled:bg-abyss-700 disabled:text-film-500 disabled:cursor-not-allowed"
+          className="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto rounded-t-[24px] border border-film-900 bg-film-900 px-6 py-4 text-center font-sans text-sm font-bold uppercase tracking-[0.2em] text-abyss-900 shadow-[0_-12px_40px_rgba(0,0,0,0.28)] disabled:cursor-not-allowed disabled:border-abyss-700 disabled:bg-abyss-700 disabled:text-film-500"
+          {...tapMotionProps}
         >
           start journaling
-        </button>
+        </motion.button>
       )}
 
       {selectedMoment && (
@@ -212,49 +237,6 @@ export function HomePage() {
   );
 }
 
-function CornerMarker({
-  position,
-}: {
-  position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
-}) {
-  const base = 'absolute pointer-events-none';
-  const arm = 'bg-film-900/40';
-
-  const posMap: Record<string, string> = {
-    'top-left': 'top-2 left-2',
-    'top-right': 'top-2 right-2',
-    'bottom-left': 'bottom-2 left-2',
-    'bottom-right': 'bottom-2 right-2',
-  };
-
-  const isTop = position.startsWith('top');
-  const isLeft = position.endsWith('left');
-
-  return (
-    <div className={`${base} ${posMap[position]}`}>
-      <div
-        className={`absolute ${arm}`}
-        style={{
-          width: 16,
-          height: 1,
-          top: 0,
-          [isLeft ? 'left' : 'right']: 0,
-        }}
-      />
-      <div
-        className={`absolute ${arm}`}
-        style={{
-          width: 1,
-          height: 16,
-          top: isTop ? 0 : 'auto',
-          bottom: isTop ? 'auto' : 0,
-          [isLeft ? 'left' : 'right']: 0,
-        }}
-      />
-    </div>
-  );
-}
-
 function MomentCard({
   moment,
   onClick,
@@ -265,10 +247,11 @@ function MomentCard({
   const thumb = moment.photos?.[0]?.photo_url;
 
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onClick}
       className="min-w-[148px] max-w-[148px] snap-start text-left border border-abyss-700 bg-abyss-900/60"
+      {...tapMotionProps}
     >
       {thumb ? (
         <img
@@ -285,7 +268,7 @@ function MomentCard({
           {moment.mood && <span className="text-sm">{MOOD_EMOJI[moment.mood]}</span>}
         </div>
       </div>
-    </button>
+    </motion.button>
   );
 }
 
@@ -312,9 +295,9 @@ function MomentDetailModal({
             <p className="font-sans text-xs uppercase tracking-widest text-film-500">moment</p>
             <p className="font-sans text-sm text-film-700 mt-1">{formatTime(moment.captured_at)}</p>
           </div>
-          <button type="button" onClick={onClose}>
+          <motion.button type="button" onClick={onClose} {...tapMotionProps}>
             <X className="h-5 w-5 text-film-700 hover:text-film-900 transition-colors" />
-          </button>
+          </motion.button>
         </div>
 
         <div className="flex gap-2 overflow-x-auto px-6 pb-4">
@@ -341,15 +324,16 @@ function MomentDetailModal({
             <p className="font-sans text-sm text-film-500">no additional context for this moment.</p>
           )}
 
-          <button
+          <motion.button
             type="button"
             onClick={onDelete}
             disabled={!isOnline || deleting}
             className="w-full inline-flex items-center justify-center gap-2 border border-aura-rough text-aura-rough font-sans text-xs uppercase tracking-widest py-4 disabled:opacity-50 disabled:cursor-not-allowed"
+            {...tapMotionProps}
           >
             <Trash2 className="h-4 w-4" />
             {deleting ? 'deleting...' : 'delete moment'}
-          </button>
+          </motion.button>
         </div>
       </div>
     </div>

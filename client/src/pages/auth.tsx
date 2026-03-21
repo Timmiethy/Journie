@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../lib/store';
-import { api } from '../lib/api';
+import { ActionButton, TextButton } from '../components/ui/action-button';
 import { AuraShell } from '../components/layout/AuraShell';
 
 type Mode = 'login' | 'signup';
@@ -46,15 +46,7 @@ export function AuthPage() {
         user.id,
         user.user_metadata?.display_name ?? user.email ?? 'User'
       );
-
-      try {
-        const persona = await api.persona.get();
-        navigate(persona ? '/home' : '/onboarding', { replace: true });
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'something went wrong. try again.';
-        setError(message);
-        toast.error(message);
-      }
+      navigate('/auth/resolver', { replace: true });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'something went wrong. try again.';
       setError(message);
@@ -66,18 +58,18 @@ export function AuthPage() {
 
   return (
     <AuraShell>
-      <div className="flex min-h-screen items-center justify-center px-6">
-        <div className="w-full max-w-xs">
+      <div className="flex min-h-screen items-center justify-center px-5 py-10">
+        <div className="w-full rounded-[28px] border border-abyss-700/80 bg-abyss-900/85 px-6 py-8 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-sm">
           {/* Brand */}
           <h1 className="font-serif text-4xl font-medium text-film-900 tracking-tight text-center mb-2">
             journie
           </h1>
-          <p className="font-sans text-sm text-film-700 tracking-[0.15em] uppercase text-center mb-12">
+          <p className="font-sans text-sm text-film-700 tracking-[0.15em] uppercase text-center mb-10">
             your day, your journal, zero writing.
           </p>
 
           {/* Divider */}
-          <div className="w-12 h-px bg-abyss-600 mx-auto mb-12" />
+          <div className="w-12 h-px bg-abyss-600 mx-auto mb-10" />
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -101,13 +93,14 @@ export function AuthPage() {
               className="w-full bg-transparent border-b border-abyss-600 py-3 text-film-900 font-sans text-base placeholder:text-film-500 focus:outline-none focus:border-film-700 transition-colors duration-200"
             />
 
-            <button
+            <ActionButton
               type="submit"
-              disabled={loading}
-              className="w-full bg-film-900 text-abyss-900 font-sans font-bold text-sm uppercase tracking-widest py-4 rounded-none hover:bg-film-700 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              pending={loading}
+              pendingLabel={mode === 'signup' ? 'creating account...' : 'signing in...'}
+              className="w-full"
             >
-              {loading ? '...' : mode === 'signup' ? 'sign up' : 'log in'}
-            </button>
+              {mode === 'signup' ? 'sign up' : 'log in'}
+            </ActionButton>
           </form>
 
           {/* Error */}
@@ -119,18 +112,17 @@ export function AuthPage() {
 
           {/* Toggle */}
           <div className="mt-8 text-center">
-            <button
+            <TextButton
               type="button"
               onClick={() => {
                 setMode(mode === 'signup' ? 'login' : 'signup');
                 setError(null);
               }}
-              className="font-sans text-sm text-film-700 hover:text-film-900 transition-colors duration-200 underline underline-offset-4"
             >
               {mode === 'signup'
                 ? 'already have an account? log in'
                 : 'new here? sign up'}
-            </button>
+            </TextButton>
           </div>
         </div>
       </div>

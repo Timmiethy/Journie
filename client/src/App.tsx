@@ -3,8 +3,10 @@ import { useEffect, useState } from 'react';
 import { Toaster } from 'sonner';
 import { supabase } from './lib/supabase';
 import { useStore } from './lib/store';
+import { CalendarDayPopover } from './components/calendar-day-popover';
 
 import { AuthPage }            from './pages/auth';
+import { PostAuthResolverPage } from './pages/post-auth-resolver';
 import { OnboardingPage }      from './pages/onboarding';
 import { HomePage }            from './pages/home';
 import { MomentDetailPage }    from './pages/moment-detail';
@@ -55,7 +57,12 @@ export default function App() {
   }, []);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true,
+      }}
+    >
       <Toaster
         position="top-center"
         toastOptions={{
@@ -77,6 +84,7 @@ export default function App() {
       )}
       <Routes>
         <Route path="/auth" element={<AuthPage />} />
+        <Route path="/auth/resolver" element={<PostAuthResolverPage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/onboarding" element={<OnboardingPage />} />
@@ -89,6 +97,7 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
+      <CalendarDayPopover />
     </BrowserRouter>
   );
 }

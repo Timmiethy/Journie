@@ -4,6 +4,8 @@ import { useStore } from './store';
 
 const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 const REQUEST_TIMEOUT_MS = 30000;
+const AUTH_SESSION_RETRIES = 5;
+const AUTH_SESSION_RETRY_MS = 100;
 
 type JournalUpdate = {
   content?: string;
@@ -29,12 +31,29 @@ type TranscriptionResponse = {
   transcript: string;
 };
 
-async function getAuthHeader(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) {
-    throw new Error('Not authenticated');
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
   }
-  return { Authorization: `Bearer ${session.access_token}` };
+}
+
+async function getAuthHeader(): Promise<Record<string, string>> {
+  for (let attempt = 0; attempt < AUTH_SESSION_RETRIES; attempt += 1) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      return { Authorization: `Bearer ${session.access_token}` };
+    }
+
+    if (attempt < AUTH_SESSION_RETRIES - 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, AUTH_SESSION_RETRY_MS));
+    }
+  }
+
+  throw new Error('Not authenticated');
 }
 
 async function request<T>(
@@ -79,7 +98,7 @@ async function request<T>(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? `Request failed: ${res.status}`);
+    throw new ApiError(err.error ?? `Request failed: ${res.status}`, res.status);
   }
 
   if (res.status === 204) {

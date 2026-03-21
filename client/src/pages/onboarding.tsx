@@ -1,8 +1,12 @@
-import { useState, useCallback, type ReactNode } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { AnimatePresence, m, useIsPresent } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { AuraShell } from '../components/layout/AuraShell';
+import { ActionButton, TextButton } from '../components/ui/action-button';
+import { spring, tapMotionProps, withReducedMotion } from '../lib/motion';
+import { usePrefersReducedMotion } from '../lib/use-prefers-reduced-motion';
 import type {
   WritingStyle,
   JournalTopic,
@@ -139,25 +143,24 @@ const initialPersona: PersonaState = {
 
 export function OnboardingPage() {
   const navigate = useNavigate();
+  const shouldReduceMotion = usePrefersReducedMotion();
   const [step, setStep] = useState(0);
   const [persona, setPersona] = useState<PersonaState>(initialPersona);
   const [animDir, setAnimDir] = useState<'forward' | 'back'>('forward');
-  const [animating, setAnimating] = useState(false);
+  const [stepFrameHeight, setStepFrameHeight] = useState<number | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contextText, setContextText] = useState('');
 
   const goTo = useCallback(
     (next: number) => {
-      if (animating) return;
+      if (transitioning || next < 0 || next >= TOTAL_STEPS) return;
       setAnimDir(next > step ? 'forward' : 'back');
-      setAnimating(true);
-      setTimeout(() => {
-        setStep(next);
-        setAnimating(false);
-      }, 300);
+      setTransitioning(true);
+      setStep(next);
     },
-    [step, animating]
+    [step, transitioning]
   );
 
   const next = () => goTo(step + 1);
@@ -349,30 +352,31 @@ export function OnboardingPage() {
           <StepShell question="what's your MBTI type?">
             <div className="grid grid-cols-4 gap-2 max-w-xs mx-auto">
               {ALL_MBTI.map((t) => (
-                <button
+                <m.button
                   key={t}
                   type="button"
                   onClick={() => setPersona((p) => ({ ...p, mbti: p.mbti === t ? null : t }))}
-                  className={`font-sans text-sm font-bold py-2 border text-center cursor-pointer transition-all duration-200 ${
+                  className={`rounded-2xl border py-2.5 text-center font-sans text-sm font-bold transition-[background-color,border-color,color,transform] duration-150 ${
                     persona.mbti === t
-                      ? 'border-film-900 bg-film-900 text-abyss-900'
-                      : 'border-abyss-600 text-film-700 hover:border-film-700'
+                      ? 'border-film-900 bg-film-900 text-abyss-900 shadow-[0_14px_32px_rgba(245,245,245,0.08)]'
+                      : 'border-abyss-700 bg-abyss-900/60 text-film-900 hover:border-film-700 hover:bg-abyss-800/80'
                   }`}
+                  {...tapMotionProps}
                 >
                   {t}
-                </button>
+                </m.button>
               ))}
             </div>
-            <button
-              type="button"
+            <div className="mt-4 text-center">
+              <TextButton
               onClick={() => {
                 setPersona((p) => ({ ...p, mbti: null }));
                 next();
               }}
-              className="font-sans text-sm text-film-500 hover:text-film-700 underline underline-offset-4 mt-4 block text-center mx-auto"
-            >
-              I don't know / skip
-            </button>
+              >
+                I don't know / skip
+              </TextButton>
+            </div>
           </StepShell>
         );
 
@@ -458,19 +462,19 @@ export function OnboardingPage() {
               value={contextText}
               onChange={(e) => setContextText(e.target.value)}
               placeholder="e.g., I'm Tan, a CS student who lives on cà phê sữa đá..."
-              className="w-full bg-transparent border-b border-abyss-600 py-3 text-film-900 font-serif text-lg placeholder:text-film-500 focus:outline-none focus:border-film-700 resize-none min-h-[100px] transition-colors duration-200"
+              className="min-h-[120px] w-full rounded-[22px] border border-abyss-700 bg-abyss-900/60 px-4 py-4 text-lg text-film-900 placeholder:text-film-500 focus:outline-none focus:border-film-700 resize-none font-serif transition-colors duration-200"
             />
-            <button
-              type="button"
+            <div className="mt-4 text-center">
+              <TextButton
               onClick={() => {
                 setPersona((p) => ({ ...p, additional_context: null }));
                 setContextText('');
                 next();
               }}
-              className="font-sans text-sm text-film-500 hover:text-film-700 underline underline-offset-4 mt-4 block text-center mx-auto"
-            >
-              skip
-            </button>
+              >
+                skip
+              </TextButton>
+            </div>
           </StepShell>
         );
 
@@ -508,9 +512,9 @@ export function OnboardingPage() {
 
   return (
     <AuraShell>
-      <div className="min-h-screen flex flex-col">
+      <div className="min-h-screen flex flex-col px-5 safe-top safe-bottom">
         {/* Progress dots */}
-        <div className="flex gap-2 items-center justify-center pt-8 pb-8">
+        <div className="flex gap-2 items-center justify-center pb-5">
           {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
             <div
               key={i}
@@ -526,43 +530,63 @@ export function OnboardingPage() {
         </div>
 
         {/* Step content with animation */}
-        <div className="flex-1 flex flex-col justify-center px-6 pb-8 overflow-hidden">
-          <div
-            className="transition-all duration-300 ease-out"
-            style={{
-              opacity: animating ? 0 : 1,
-              transform: animating
-                ? `translateX(${animDir === 'forward' ? '-20px' : '20px'})`
-                : 'translateX(0)',
-            }}
+        <div className="flex-1 flex items-center">
+          <m.div
+            layout={!shouldReduceMotion}
+            transition={withReducedMotion(Boolean(shouldReduceMotion), spring)}
+            className="w-full overflow-hidden rounded-[28px] border border-abyss-700/80 bg-abyss-900/88 shadow-[0_24px_80px_rgba(0,0,0,0.34)]"
           >
-            {renderStep()}
-          </div>
+            <div className="border-b border-abyss-700/80 px-6 py-4">
+              <p className="font-sans text-[10px] uppercase tracking-[0.22em] text-film-500">
+                step {step + 1} of {TOTAL_STEPS}
+              </p>
+            </div>
+
+            <m.div
+              layout={!shouldReduceMotion}
+              transition={withReducedMotion(Boolean(shouldReduceMotion), spring)}
+              className="relative overflow-hidden px-5 py-6"
+              data-testid="survey-step-container"
+              style={stepFrameHeight ? { minHeight: stepFrameHeight } : undefined}
+            >
+              <AnimatePresence
+                initial={false}
+                mode="sync"
+                custom={animDir}
+                onExitComplete={() => setTransitioning(false)}
+              >
+                <SurveyStepPanel
+                  key={step}
+                  direction={animDir}
+                  onHeightChange={setStepFrameHeight}
+                  shouldReduceMotion={Boolean(shouldReduceMotion)}
+                >
+                  {renderStep()}
+                </SurveyStepPanel>
+              </AnimatePresence>
+            </m.div>
+          </m.div>
         </div>
 
         {/* Navigation */}
-        <div className="px-6 pb-8 max-w-md mx-auto w-full space-y-3">
-          <button
-            type="button"
-            disabled={!canProceed() || saving}
+        <div className="pt-6 space-y-3">
+          <ActionButton
+            disabled={!canProceed() || saving || transitioning}
             onClick={handleNext}
-            className="w-full bg-film-900 text-abyss-900 font-sans font-bold text-sm uppercase tracking-widest py-4 rounded-none hover:bg-film-700 active:scale-[0.98] transition-all duration-200 disabled:bg-abyss-700 disabled:text-film-500 disabled:cursor-not-allowed"
+            pending={saving}
+            pendingLabel="saving..."
+            className="w-full"
           >
-            {step === 10
-              ? saving
-                ? 'saving...'
-                : "looks good, let's go"
-              : 'next'}
-          </button>
+            {step === 10 ? "looks good, let's go" : 'next'}
+          </ActionButton>
           {step > 0 && (
             <div className="text-center">
-              <button
-                type="button"
+              <TextButton
                 onClick={back}
-                className="font-sans text-sm text-film-700 hover:text-film-900 underline underline-offset-4 transition-colors duration-200"
+                disabled={transitioning}
               >
                 back
-              </button>
+              </TextButton>
             </div>
           )}
         </div>
@@ -581,8 +605,8 @@ function StepShell({
   children: ReactNode;
 }) {
   return (
-    <div className="max-w-md mx-auto w-full">
-      <h2 className="font-serif text-3xl font-medium leading-tight text-film-900 text-center mb-10">
+    <div className="mx-auto w-full">
+      <h2 className="font-serif text-[2rem] font-medium leading-tight text-film-900 text-center mb-8">
         {question}
       </h2>
       {children}
@@ -600,23 +624,24 @@ function TextLinkOption({
   children: ReactNode;
 }) {
   return (
-    <button
+    <m.button
       type="button"
       onClick={onClick}
-      className={`block w-full text-left font-sans text-lg cursor-pointer py-3 transition-colors duration-150 ${
+      className={`block w-full rounded-[22px] border px-4 py-4 text-left font-sans text-base transition-[background-color,border-color,color,transform] duration-150 ${
         selected
-          ? 'text-film-900 font-medium border-l-2 border-film-900 pl-3'
-          : 'text-film-700 hover:text-film-900'
+          ? 'border-film-900 bg-film-900 text-abyss-900 shadow-[0_18px_40px_rgba(245,245,245,0.08)]'
+          : 'border-abyss-700 bg-abyss-900/55 text-film-900 hover:border-film-700 hover:bg-abyss-800/80'
       }`}
+      {...tapMotionProps}
     >
       {children}
-    </button>
+    </m.button>
   );
 }
 
 function PillGroup({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-wrap gap-2 justify-center max-w-[90%] mx-auto">
+    <div className="flex flex-wrap gap-3 justify-center max-w-[90%] mx-auto">
       {children}
     </div>
   );
@@ -634,19 +659,107 @@ function Pill({
   children: ReactNode;
 }) {
   return (
-    <button
+    <m.button
       type="button"
       onClick={onClick}
       disabled={disabled && !selected}
-      className={`font-sans text-sm px-4 py-2 border transition-all duration-200 cursor-pointer capitalize ${
+      className={`rounded-full border px-4 py-2.5 font-sans text-sm transition-[background-color,border-color,color,opacity,transform] duration-150 capitalize ${
         selected
-          ? 'border-film-900 text-abyss-900 bg-film-900'
+          ? 'border-film-900 bg-film-900 text-abyss-900 shadow-[0_14px_32px_rgba(245,245,245,0.08)]'
           : disabled
-            ? 'border-abyss-600 text-film-700 opacity-30 cursor-not-allowed pointer-events-none'
-            : 'border-abyss-600 text-film-700 bg-transparent hover:border-film-700 hover:text-film-900'
+            ? 'border-abyss-700 text-film-500 opacity-30 cursor-not-allowed pointer-events-none'
+            : 'border-abyss-700 bg-abyss-900/60 text-film-900 hover:border-film-700 hover:bg-abyss-800/80'
       }`}
+      {...tapMotionProps}
     >
       {children}
-    </button>
+    </m.button>
   );
+}
+
+function SurveyStepPanel({
+  direction,
+  onHeightChange,
+  shouldReduceMotion,
+  children,
+}: {
+  direction: 'forward' | 'back';
+  onHeightChange: (height: number) => void;
+  shouldReduceMotion: boolean;
+  children: ReactNode;
+}) {
+  const isPresent = useIsPresent();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const stepVariants = getStepPanelVariants(shouldReduceMotion);
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel || !isPresent) {
+      return undefined;
+    }
+
+    const updateHeight = () => {
+      onHeightChange(panel.getBoundingClientRect().height);
+    };
+
+    updateHeight();
+
+    const resizeObserver = new ResizeObserver(() => updateHeight());
+    resizeObserver.observe(panel);
+
+    return () => resizeObserver.disconnect();
+  }, [children, isPresent, onHeightChange]);
+
+  return (
+    <m.div
+      ref={panelRef}
+      custom={direction}
+      variants={stepVariants}
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      transition={withReducedMotion(shouldReduceMotion, spring)}
+      className="w-full"
+      data-testid="survey-step-panel"
+      style={{
+        position: isPresent ? 'relative' : 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        pointerEvents: isPresent ? 'auto' : 'none',
+      }}
+      aria-hidden={!isPresent}
+      tabIndex={isPresent ? undefined : -1}
+    >
+      {children}
+    </m.div>
+  );
+}
+
+function getStepPanelVariants(shouldReduceMotion: boolean) {
+  if (shouldReduceMotion) {
+    return {
+      hidden: { opacity: 0 },
+      visible: { opacity: 1 },
+      exit: { opacity: 0 },
+    };
+  }
+
+  return {
+    hidden: {
+      opacity: 0,
+      scale: 0.985,
+      filter: 'blur(8px)',
+    },
+    visible: {
+      opacity: 1,
+      scale: 1,
+      filter: 'blur(0px)',
+    },
+    exit: {
+      opacity: 0,
+      scale: 1.01,
+      filter: 'blur(6px)',
+    },
+  };
 }

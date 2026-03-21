@@ -1,11 +1,15 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Loader2, Pencil, RefreshCw, X } from 'lucide-react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { ChevronLeft, Pencil, RefreshCw, X } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { api } from '../lib/api';
+import { ApiError, api } from '../lib/api';
 import { AuraShell } from '../components/layout/AuraShell';
+import { JournalRenderer } from '../components/journal-renderer';
 import { useStore } from '../lib/store';
+import { tapMotionProps } from '../lib/motion';
+import { ActionButton, TextButton } from '../components/ui/action-button';
 import type { JournalEntry, MomentWithPhotos } from '../types';
 
 const POLL_MS = 2000;
@@ -14,7 +18,8 @@ const TIMEOUT_MS = 30000;
 export function JournalViewPage() {
   const { date } = useParams<{ date: string }>();
   const navigate = useNavigate();
-  const isOnline = useStore((s) => s.isOnline);
+  const location = useLocation();
+  const isOnline = useStore((state) => state.isOnline);
 
   const [journal, setJournal] = useState<JournalEntry | null>(null);
   const [moments, setMoments] = useState<MomentWithPhotos[]>([]);
@@ -28,6 +33,7 @@ export function JournalViewPage() {
 
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const startTimeRef = useRef(0);
+  const optimisticGenerating = Boolean((location.state as { optimisticGenerating?: boolean } | null)?.optimisticGenerating);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -41,8 +47,8 @@ export function JournalViewPage() {
     try {
       const loadedMoments = await api.moments.list(date);
       setMoments(loadedMoments);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'failed to load moments');
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'failed to load moments');
     }
   }, [date]);
 
@@ -78,13 +84,13 @@ export function JournalViewPage() {
           stopPolling();
           setLoading(false);
         }
-      } catch (err: unknown) {
+      } catch (error: unknown) {
         stopPolling();
         setLoading(false);
         setLoadingFailed(true);
         if (!pollingErrorShownRef.current) {
           pollingErrorShownRef.current = true;
-          toast.error(err instanceof Error ? err.message : 'Something went wrong.');
+          toast.error(error instanceof Error ? error.message : 'Something went wrong.');
         }
       }
     }, POLL_MS);
@@ -98,41 +104,62 @@ export function JournalViewPage() {
     setLoadingFailed(false);
     setEditing(false);
 
-    Promise.all([loadJournal(), loadMoments()])
-      .then(([loadedJournal]) => {
-        if (cancelled) return;
+    Promise.allSettled([loadJournal(), loadMoments()]).then((results) => {
+      if (cancelled) return;
+
+      const [journalResult, momentsResult] = results;
+
+      if (momentsResult.status === 'rejected') {
+        toast.error(
+          momentsResult.reason instanceof Error
+            ? momentsResult.reason.message
+            : 'failed to load moments',
+        );
+      }
+
+      if (journalResult.status === 'fulfilled') {
         setLoading(false);
-        if (loadedJournal?.status === 'generating') {
+        if (journalResult.value?.status === 'generating') {
           startPolling();
         }
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
+        return;
+      }
+
+      if (
+        optimisticGenerating &&
+        journalResult.reason instanceof ApiError &&
+        journalResult.reason.status === 404 &&
+        date
+      ) {
+        const pendingJournal = createPendingJournal(date);
+        setJournal(pendingJournal);
+        setEditContent('');
         setLoading(false);
-        toast.error(err instanceof Error ? err.message : 'failed to load journal');
-      });
+        startPolling();
+        return;
+      }
+
+      setLoading(false);
+      toast.error(
+        journalResult.reason instanceof Error
+          ? journalResult.reason.message
+          : 'failed to load journal',
+      );
+    });
 
     return () => {
       cancelled = true;
       stopPolling();
     };
-  }, [date, loadJournal, loadMoments, startPolling, stopPolling]);
+  }, [date, loadJournal, loadMoments, optimisticGenerating, startPolling, stopPolling]);
 
   const allPhotos = useMemo(
-    () => moments.flatMap((m) => m.photos.map((p) => p.photo_url)),
+    () => moments.flatMap((moment) => moment.photos.map((photo) => photo.photo_url)),
     [moments],
   );
 
-  const paragraphs = useMemo(() => {
-    if (!journal?.content) return [];
-    return journal.content.split(/\n\n+/).filter(Boolean);
-  }, [journal?.content]);
-
-  const lastParagraph = paragraphs.length > 0 ? paragraphs[paragraphs.length - 1] : undefined;
-  const bodyParagraphs = paragraphs.slice(0, -1);
-
   const dateLabel = date
-    ? format(new Date(`${date}T12:00:00`), 'MMMM d, yyyy — EEEE')
+    ? format(new Date(`${date}T12:00:00`), 'MMMM d, yyyy - EEEE')
     : '';
 
   const enterEditMode = async () => {
@@ -141,11 +168,14 @@ export function JournalViewPage() {
     if (journal.status === 'confirmed') {
       setSaving(true);
       try {
-        const updated = await api.journal.update(date, { status: 'draft', content: journal.content });
+        const updated = await api.journal.update(date, {
+          status: 'draft',
+          content: journal.content,
+        });
         setJournal(updated);
         setEditContent(updated.content);
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : 'failed to switch journal to draft');
+      } catch (error: unknown) {
+        toast.error(error instanceof Error ? error.message : 'failed to switch journal to draft');
         setSaving(false);
         return;
       } finally {
@@ -167,8 +197,8 @@ export function JournalViewPage() {
       setEditContent(updated.content);
       setEditing(false);
       toast.success('journal saved');
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'failed to save journal');
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'failed to save journal');
     } finally {
       setSaving(false);
     }
@@ -180,12 +210,12 @@ export function JournalViewPage() {
     setSaving(true);
     try {
       await api.journal.generate(date, true);
-      setJournal((current) => current ? { ...current, status: 'generating' } : current);
+      setJournal((current) => (current ? { ...current, status: 'generating' } : current));
       setEditing(false);
       setLoadingFailed(false);
       startPolling();
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'failed to regenerate journal');
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'failed to regenerate journal');
     } finally {
       setSaving(false);
     }
@@ -205,55 +235,28 @@ export function JournalViewPage() {
     );
   }
 
-  if (journal.status === 'generating') {
-    return (
-      <AuraShell>
-        <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
-          {!loadingFailed ? (
-            <>
-              <Loader2 className="h-6 w-6 text-film-700 animate-spin mb-5" />
-              <p className="font-serif italic text-film-700 text-lg">Writing your journal...</p>
-            </>
-          ) : (
-            <>
-              <p className="font-sans text-sm text-aura-rough">Something went wrong.</p>
-              <button
-                type="button"
-                onClick={handleRedo}
-                disabled={saving || !isOnline}
-                className="font-sans text-sm text-film-700 underline underline-offset-4 mt-3 hover:text-film-900 transition-colors disabled:opacity-50"
-              >
-                {saving ? 'retrying...' : 'try again'}
-              </button>
-            </>
-          )}
-        </div>
-      </AuraShell>
-    );
-  }
-
   return (
     <AuraShell>
-      <div className={`min-h-screen flex flex-col ${journal.status === 'draft' ? 'pb-24' : 'pb-8'}`}>
-        <div className="flex items-center justify-between px-6 pt-8 pb-6">
-          <button onClick={() => navigate(-1)}>
+      <div className={`min-h-screen flex flex-col ${journal.status === 'draft' ? 'pb-24 safe-bottom' : 'pb-8 safe-bottom'}`}>
+        <div className="flex items-center justify-between px-6 safe-top pb-6">
+          <motion.button type="button" onClick={() => navigate(-1)} {...tapMotionProps}>
             <ChevronLeft className="h-5 w-5 text-film-700 hover:text-film-900 transition-colors" />
-          </button>
+          </motion.button>
           <span className="font-sans text-[11px] uppercase tracking-widest text-film-700 text-center">
             {dateLabel}
           </span>
           {!editing ? (
-            <button
+            <TextButton
               type="button"
               onClick={enterEditMode}
               disabled={saving || !isOnline}
-              className="font-sans text-xs text-film-700 hover:text-film-900 uppercase tracking-widest underline underline-offset-4 disabled:opacity-50"
+              className="text-xs uppercase tracking-[0.18em]"
             >
               <span className="inline-flex items-center gap-1">
                 <Pencil className="h-3.5 w-3.5" />
                 edit
               </span>
-            </button>
+            </TextButton>
           ) : (
             <div className="w-10" />
           )}
@@ -263,143 +266,112 @@ export function JournalViewPage() {
           <div className="px-6 flex-1">
             <textarea
               value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
+              onChange={(event) => setEditContent(event.target.value)}
               className="w-full min-h-[60vh] bg-transparent border-none text-film-900 font-serif text-lg leading-[1.85] resize-none focus:outline-none p-0"
             />
           </div>
         ) : (
           <div className="flex-1">
-            {bodyParagraphs.map((paragraph, index) => {
-              const photoIdx = bodyParagraphs.length > 0
-                ? Math.floor((index / bodyParagraphs.length) * allPhotos.length)
-                : 0;
-              const showPhoto = index > 0 && index % 2 === 0 && allPhotos[photoIdx];
+            <JournalRenderer
+              status={journal.status}
+              content={journal.content}
+              photos={allPhotos}
+              onPhotoClick={setLightboxUrl}
+            />
 
-              return (
-                <div key={`${index}-${paragraph.slice(0, 16)}`}>
-                  {showPhoto && (
-                    <img
-                      src={allPhotos[photoIdx]}
-                      alt=""
-                      className="w-full aspect-[21/9] object-cover my-6 cursor-pointer"
-                      onClick={() => setLightboxUrl(allPhotos[photoIdx])}
-                    />
-                  )}
-                  <p className="font-serif text-lg leading-[1.85] text-film-900 mb-6 text-justify px-6">
-                    <RenderMarkdown text={paragraph} />
-                  </p>
-                </div>
-              );
-            })}
-
-            {lastParagraph && (
-              <p className="font-serif text-base italic text-film-700 text-center py-8 border-t border-abyss-700 mt-4 max-w-[85%] mx-auto">
-                <RenderMarkdown text={lastParagraph} />
-              </p>
-            )}
-
-            {allPhotos.length > 0 && bodyParagraphs.length <= 2 && (
-              <img
-                src={allPhotos[0]}
-                alt=""
-                className="w-full aspect-[21/9] object-cover my-6 cursor-pointer"
-                onClick={() => setLightboxUrl(allPhotos[0])}
-              />
-            )}
+            {journal.status === 'generating' && loadingFailed ? (
+              <div className="px-6 pb-8 text-center">
+                <p className="font-sans text-sm text-aura-rough">Something went wrong.</p>
+                <motion.button
+                  type="button"
+                  onClick={handleRedo}
+                  disabled={saving || !isOnline}
+                  className="font-sans text-sm text-film-700 underline underline-offset-4 mt-3 hover:text-film-900 transition-colors disabled:opacity-50"
+                  {...tapMotionProps}
+                >
+                  {saving ? 'retrying...' : 'try again'}
+                </motion.button>
+              </div>
+            ) : null}
           </div>
         )}
       </div>
 
-      {journal.status === 'draft' && (
-        <div className="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto flex gap-3 p-4 bg-abyss-900/90 backdrop-blur-sm">
-          <button
+      {journal.status === 'draft' ? (
+        <div className="fixed bottom-0 left-0 right-0 mx-auto flex max-w-[480px] gap-3 rounded-t-[24px] border border-abyss-700/80 bg-abyss-900/92 p-4 backdrop-blur-md">
+          <ActionButton
             onClick={handleConfirm}
             disabled={saving || !isOnline}
-            className="flex-1 bg-film-900 text-abyss-900 font-sans font-bold text-xs uppercase tracking-widest py-4 rounded-none disabled:opacity-50"
+            pending={saving}
+            pendingLabel="saving..."
+            className="flex-1"
           >
-            {saving ? 'saving...' : 'confirm & save'}
-          </button>
+            confirm & save
+          </ActionButton>
 
           {editing ? (
-            <button
-              type="button"
+            <ActionButton
               onClick={() => {
                 setEditing(false);
                 setEditContent(journal.content);
               }}
-              className="border border-abyss-600 text-film-700 font-sans text-xs uppercase tracking-widest py-4 px-6 rounded-none hover:border-film-700 transition-colors"
+              variant="secondary"
+              className="px-6"
             >
               cancel
-            </button>
+            </ActionButton>
           ) : (
-            <button
+            <ActionButton
               onClick={handleRedo}
               disabled={saving || !isOnline}
-              className="border border-abyss-600 text-film-700 font-sans text-xs uppercase tracking-widest py-4 px-6 rounded-none hover:border-film-700 transition-colors disabled:opacity-50"
+              variant="secondary"
+              className="px-6"
             >
               <span className="inline-flex items-center gap-2">
                 <RefreshCw className="h-3.5 w-3.5" />
                 regenerate
               </span>
-            </button>
+            </ActionButton>
           )}
         </div>
-      )}
+      ) : null}
 
-      {lightboxUrl && (
+      {lightboxUrl ? (
         <div
           className="fixed inset-0 bg-black z-50 flex items-center justify-center"
           onClick={() => setLightboxUrl(null)}
         >
-          <button
+          <motion.button
+            type="button"
             className="absolute top-6 right-6 z-10"
             onClick={() => setLightboxUrl(null)}
+            {...tapMotionProps}
           >
             <X className="h-6 w-6 text-film-900" />
-          </button>
+          </motion.button>
           <img
             src={lightboxUrl}
             alt=""
             className="max-w-full max-h-full object-contain"
           />
         </div>
-      )}
+      ) : null}
     </AuraShell>
   );
 }
 
-function RenderMarkdown({ text }: { text: string }) {
-  const parts: React.ReactNode[] = [];
-  const regex = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*|_(.+?)_)/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  let key = 0;
+function createPendingJournal(date: string): JournalEntry {
+  const timestamp = new Date().toISOString();
 
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index));
-    }
-
-    if (match[2]) {
-      parts.push(
-        <span key={key++} className="font-medium italic text-film-900">{match[2]}</span>,
-      );
-    } else if (match[3]) {
-      parts.push(
-        <span key={key++} className="font-medium text-film-900">{match[3]}</span>,
-      );
-    } else if (match[4] || match[5]) {
-      parts.push(
-        <span key={key++} className="italic text-film-700">{match[4] || match[5]}</span>,
-      );
-    }
-
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
-  }
-
-  return <>{parts}</>;
+  return {
+    id: `pending-${date}`,
+    user_id: '',
+    day_date: date,
+    content: '',
+    status: 'generating',
+    generated_at: timestamp,
+    confirmed_at: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+  };
 }

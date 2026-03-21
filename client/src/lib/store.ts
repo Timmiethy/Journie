@@ -1,6 +1,20 @@
 import { create } from 'zustand';
 import type { MomentWithPhotos, Mood } from '../types';
 
+export interface CalendarPopoverState {
+  date: string;
+  label: string;
+  hasJournal: boolean;
+  preview: string;
+  photoUrl: string | null;
+  anchorRect: {
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  };
+}
+
 export const AURA_COLOR: Record<Mood, string> = {
   great: '#2EEA99',
   good: '#FF8A4C',
@@ -30,6 +44,9 @@ interface AppState {
   removeMoment: (id: string) => void;
   currentAura: string;
   updateAura: (moments: MomentWithPhotos[]) => void;
+  calendarPopover: CalendarPopoverState | null;
+  setCalendarPopover: (popover: CalendarPopoverState) => void;
+  clearCalendarPopover: () => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -42,6 +59,7 @@ export const useStore = create<AppState>((set) => ({
       displayName: null,
       todayMoments: [],
       currentAura: DEFAULT_AURA,
+      calendarPopover: null,
     }),
   isOnline: typeof navigator === 'undefined' ? true : navigator.onLine,
   setOnlineStatus: (isOnline) => set({ isOnline }),
@@ -69,4 +87,7 @@ export const useStore = create<AppState>((set) => ({
     }),
   currentAura: DEFAULT_AURA,
   updateAura: (moments) => set({ currentAura: getAuraFromMoments(moments) }),
+  calendarPopover: null,
+  setCalendarPopover: (calendarPopover) => set({ calendarPopover }),
+  clearCalendarPopover: () => set({ calendarPopover: null }),
 }));
