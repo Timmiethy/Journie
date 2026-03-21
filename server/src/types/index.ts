@@ -78,6 +78,7 @@ export interface JournalEntry {
   user_id: string;
   day_date: string;
   content: string;
+  generated_content: string | null;
   status: JournalStatus;
   generated_at: string;
   confirmed_at: string | null;
@@ -86,6 +87,20 @@ export interface JournalEntry {
 }
 
 export type JournalStatus = 'generating' | 'draft' | 'confirmed';
+
+// ─── Voice Profile ───
+
+export interface VoiceProfile {
+  id: string;
+  user_id: string;
+  voice_summary: string;
+  preferred_phrases: string[];
+  avoided_phrases: string[];
+  journals_analyzed: number;
+  last_refreshed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 // ─── Aggregated Types ───
 

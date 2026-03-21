@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import zlib from 'node:zlib';
 import type { APIRequestContext, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 
@@ -25,11 +26,79 @@ function readEnvFile(filePath: string): Record<string, string> {
 
 const helperDirectory = path.dirname(fileURLToPath(import.meta.url));
 export const serverEnv = readEnvFile(path.resolve(helperDirectory, '../../../server/.env'));
+export const clientEnv = readEnvFile(path.resolve(helperDirectory, '../../../client/.env'));
 export const validationDirectory = path.resolve(helperDirectory, '../../../tasks/validation');
-export const pngBuffer = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9pRyxu8AAAAASUVORK5CYII=',
-  'base64',
-);
+
+function makeCrcTable() {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i += 1) {
+    let c = i;
+    for (let k = 0; k < 8; k += 1) {
+      c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+}
+
+const crcTable = makeCrcTable();
+
+function crc32(buffer: Buffer) {
+  let c = 0xffffffff;
+  for (const byte of buffer) {
+    c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Buffer) {
+  const typeBuffer = Buffer.from(type, 'ascii');
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([typeBuffer, data])), 0);
+  return Buffer.concat([length, typeBuffer, data, crc]);
+}
+
+function createSolidPngBuffer(width: number, height: number) {
+  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
+
+  const row = Buffer.alloc(width * 4, 0);
+  for (let i = 0; i < width; i += 1) {
+    const offset = i * 4;
+    row[offset] = 112;
+    row[offset + 1] = 160;
+    row[offset + 2] = 255;
+    row[offset + 3] = 255;
+  }
+
+  const raw = Buffer.alloc((row.length + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const start = y * (row.length + 1);
+    raw[start] = 0;
+    row.copy(raw, start + 1);
+  }
+
+  const idat = zlib.deflateSync(raw);
+
+  return Buffer.concat([
+    signature,
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', idat),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+export const pngBuffer = createSolidPngBuffer(32, 32);
+const supabaseAnonKey = clientEnv.VITE_SUPABASE_ANON_KEY || serverEnv.SUPABASE_ANON_KEY;
 
 export async function createConfirmedUser(request: APIRequestContext) {
   const email = `codex-motion-${Date.now()}@example.com`;
@@ -71,8 +140,8 @@ export async function waitForPasswordGrantReady(
       `${serverEnv.SUPABASE_URL}/auth/v1/token?grant_type=password`,
       {
         headers: {
-          apikey: serverEnv.SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${serverEnv.SUPABASE_ANON_KEY}`,
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${supabaseAnonKey}`,
           'Content-Type': 'application/json',
         },
         data: {

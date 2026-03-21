@@ -4,13 +4,9 @@ import { expect, test } from '@playwright/test';
 import {
   createConfirmedUser,
   loginWithPassword,
+  pngBuffer,
   validationDirectory,
 } from './helpers/app-flow.ts';
-
-const pngBuffer = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9pRyxu8AAAAASUVORK5CYII=',
-  'base64',
-);
 
 test('journie motion flow renders and navigates without console errors', async ({ page }) => {
   test.setTimeout(90000);

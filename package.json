@@ -3,12 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "pwsh -NoProfile -File scripts/dev.ps1",
+    "dev": "concurrently -k -n server,client -c blue,green \"pnpm dev:server\" \"pnpm dev:client\"",
     "dev:client": "pnpm --filter client dev",
     "dev:server": "pnpm --filter server start:dev",
     "build:client": "pnpm --filter client build",
     "build:server": "pnpm --filter server build",
-    "build": "pnpm build:client && pnpm build:server"
+    "build": "pnpm build:client && pnpm build:server",
+    "test:e2e": "pnpm --filter client test:e2e",
+    "test:smoke": "pnpm --filter client test:e2e:smoke"
   },
   "devDependencies": {
     "concurrently": "^8"

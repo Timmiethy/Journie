@@ -83,6 +83,10 @@ export function JournalRenderer({
   const blockComponents = createMarkdownComponents(false);
   const outroComponents = createMarkdownComponents(true);
 
+  // Distribute photos evenly across text blocks, each photo shown at most once.
+  // Skip the first and last blocks so photos appear between paragraphs.
+  const photoSlots = distributePhotos(blocks.length, photos.length);
+
   return (
     <div className="relative pb-[15vh]">
       <motion.div
@@ -92,24 +96,21 @@ export function JournalRenderer({
         viewport={{ once: true, amount: 0.15 }}
       >
         {blocks.map((block, index) => {
-          const photoIndex = blocks.length > 0
-            ? Math.floor((index / blocks.length) * photos.length)
-            : 0;
-          const showPhoto = index > 0 && index % 2 === 0 && photos[photoIndex];
+          const photoIdx = photoSlots.get(index) ?? -1;
           const isLast = index === blocks.length - 1;
 
           return (
             <div key={`${index}-${block.slice(0, 24)}`}>
-              {showPhoto ? (
+              {photoIdx >= 0 ? (
                 <motion.button
                   type="button"
                   variants={itemVariants}
                   whileTap={{ scale: 0.97 }}
-                  onClick={() => onPhotoClick(photos[photoIndex])}
+                  onClick={() => onPhotoClick(photos[photoIdx])}
                   className="block w-full"
                 >
                   <img
-                    src={photos[photoIndex]}
+                    src={photos[photoIdx]}
                     alt=""
                     className="w-full aspect-[21/9] object-cover my-6 cursor-pointer"
                   />
@@ -131,7 +132,7 @@ export function JournalRenderer({
           );
         })}
 
-        {photos.length > 0 && blocks.length <= 2 ? (
+        {photos.length > 0 && photoSlots.size === 0 ? (
           <motion.button
             type="button"
             variants={itemVariants}
@@ -212,6 +213,30 @@ function createMarkdownComponents(isOutro: boolean): Components {
     strong: ({ children }) => <strong className="font-medium text-film-900">{children}</strong>,
     em: ({ children }) => <em className="italic text-film-700">{children}</em>,
   };
+}
+
+/**
+ * Map each photo to a unique block index, spaced evenly between paragraphs.
+ * Returns Map<blockIndex, photoIndex>. Skips first and last blocks.
+ */
+function distributePhotos(blockCount: number, photoCount: number): Map<number, number> {
+  const slots = new Map<number, number>();
+  if (photoCount === 0 || blockCount <= 2) return slots;
+
+  // Eligible positions: blocks 1 through blockCount-2 (skip first and last)
+  const eligible = blockCount - 2;
+  const toPlace = Math.min(photoCount, eligible);
+  const step = eligible / toPlace;
+
+  for (let i = 0; i < toPlace; i++) {
+    const blockIdx = 1 + Math.round(step * i + step / 2);
+    const clamped = Math.min(blockIdx, blockCount - 2);
+    if (!slots.has(clamped)) {
+      slots.set(clamped, i);
+    }
+  }
+
+  return slots;
 }
 
 function BottomFade() {

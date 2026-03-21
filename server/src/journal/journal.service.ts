@@ -33,6 +33,22 @@ export class JournalService {
       updateData.confirmed_at = null;
     }
 
+    // If user is editing content, preserve the original AI-generated version
+    // so we can learn from the diff later
+    if (updates.content !== undefined) {
+      const { data: existing } = await supabase
+        .from('journal_entries')
+        .select('generated_content, content')
+        .eq('user_id', userId)
+        .eq('day_date', date)
+        .single();
+
+      // Only set generated_content if it hasn't been set yet (first edit after generation)
+      if (existing && !existing.generated_content && existing.content) {
+        updateData.generated_content = existing.content;
+      }
+    }
+
     const { data, error } = await supabase
       .from('journal_entries')
       .update(updateData)

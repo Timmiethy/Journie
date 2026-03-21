@@ -11,6 +11,7 @@ import { SupabaseService } from '../../common/supabase/supabase.service';
 import { PersonaService } from '../../persona/persona.service';
 import { MomentsService } from '../../moments/moments.service';
 import { VisionService } from './vision.service';
+import { VoiceProfileService } from './voice-profile.service';
 import { OpenaiService } from '../../ai/openai.service';
 import { buildSystemPrompt, buildUserMessage } from './prompts';
 
@@ -53,6 +54,7 @@ export class GenerationService {
     private personaService: PersonaService,
     private momentsService: MomentsService,
     private visionService: VisionService,
+    private voiceProfileService: VoiceProfileService,
     private openaiService: OpenaiService,
   ) {}
 
@@ -85,10 +87,13 @@ export class GenerationService {
     }
 
     try {
-      const [persona, moments, recentJournals] = await Promise.all([
+      const [persona, moments, recentJournals, voiceProfile, editDiffs, confirmedCount] = await Promise.all([
         this.personaService.findByUserId(userId),
         this.momentsService.findByDate(userId, date),
         this.fetchRecentJournals(userId, date),
+        this.voiceProfileService.getProfile(userId),
+        this.voiceProfileService.getRecentEditDiffs(userId),
+        this.countConfirmedJournals(userId),
       ]);
 
       if (!persona) {
@@ -107,9 +112,14 @@ export class GenerationService {
         })),
       );
 
+      const rawVoiceSamples = this.buildRawVoiceSamples(describedMoments);
       const systemPrompt = buildSystemPrompt(
         persona as PersonaLike,
         this.buildRecentJournalExcerptBlock(recentJournals),
+        this.voiceProfileService.formatProfileForPrompt(voiceProfile),
+        this.voiceProfileService.formatEditDiffsForPrompt(editDiffs),
+        rawVoiceSamples,
+        confirmedCount,
       );
       const userMessage = buildUserMessage(
         describedMoments,
@@ -124,6 +134,10 @@ export class GenerationService {
       );
 
       await this.updateGeneratedJournal(userId, date, content, regenerate);
+
+      // Trigger voice profile refresh check (non-blocking)
+      this.voiceProfileService.maybeRefreshProfile(userId);
+
       return { journal_id: journal.id, status: 'generating' };
     } catch (error) {
       if (
@@ -171,7 +185,7 @@ export class GenerationService {
       .eq('status', 'confirmed')
       .lt('day_date', date)
       .order('day_date', { ascending: false })
-      .limit(3);
+      .limit(7);
 
     if (error) {
       this.logger.error(
@@ -189,7 +203,7 @@ export class GenerationService {
     }
 
     return journals
-      .map((journal, index) => `[Journal ${index + 1}] ${this.firstWords(journal.content, 100)}`)
+      .map((journal, index) => `[Journal ${index + 1}] ${this.firstWords(journal.content, 150)}`)
       .join('\n\n');
   }
 
@@ -245,6 +259,32 @@ export class GenerationService {
     return parts.length > 0 ? parts.join('\n') : null;
   }
 
+  private async countConfirmedJournals(userId: string): Promise<number> {
+    const supabase = this.supabaseService.getClient();
+    const { count, error } = await supabase
+      .from('journal_entries')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('status', 'confirmed');
+
+    if (error) {
+      this.logger.warn(`Failed to count confirmed journals: ${error.message}`);
+      return 0;
+    }
+    return count ?? 0;
+  }
+
+  private buildRawVoiceSamples(
+    describedMoments: Array<{ notes: string | null }>,
+  ): string {
+    const samples = describedMoments
+      .map((m) => m.notes?.trim())
+      .filter((n): n is string => Boolean(n));
+
+    if (samples.length === 0) return '';
+    return samples.map((s, i) => `[${i + 1}] ${s}`).join('\n');
+  }
+
   private firstWords(content: string, wordCount: number): string {
     return content.trim().split(/\s+/).slice(0, wordCount).join(' ');
   }
@@ -265,6 +305,7 @@ export class GenerationService {
           user_id: userId,
           day_date: date,
           content,
+          generated_content: content,
           status: 'draft',
           generated_at: timestamp,
           confirmed_at: null,
@@ -322,7 +363,7 @@ export class GenerationService {
 
     try {
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: this.openaiService.getChatModel(),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },

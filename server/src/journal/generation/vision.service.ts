@@ -25,7 +25,7 @@ export class VisionService {
 
     try {
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: this.openaiService.getVisionModel(),
         messages: [
           {
             role: 'user',
