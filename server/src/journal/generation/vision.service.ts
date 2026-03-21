@@ -1,9 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { OpenaiService } from '../../ai/openai.service';
 import { PHOTO_VISION_PROMPT } from './prompts';
 
 @Injectable()
 export class VisionService {
+  private readonly logger = new Logger(VisionService.name);
+
   constructor(private openaiService: OpenaiService) {}
 
   async describePhotos(photoUrls: string[]): Promise<string> {
@@ -11,10 +13,7 @@ export class VisionService {
       return 'No photos provided.';
     }
 
-    const openai = this.openaiService.getClient();
-    if (!openai) {
-      return `${photoUrls.length} photo${photoUrls.length === 1 ? '' : 's'} captured for this moment.`;
-    }
+    const openai = this.openaiService.getClientOrThrow();
 
     const imageContents = photoUrls.map((url) => ({
       type: 'image_url' as const,
@@ -37,8 +36,11 @@ export class VisionService {
       });
 
       return response.choices[0]?.message?.content ?? '';
-    } catch {
-      return `${photoUrls.length} photo${photoUrls.length === 1 ? '' : 's'} captured for this moment.`;
+    } catch (error) {
+      this.logger.error(
+        `Photo vision failed for ${photoUrls.length} photo(s): ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+      throw new InternalServerErrorException({ error: 'Photo analysis failed' });
     }
   }
 }

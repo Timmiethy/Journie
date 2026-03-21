@@ -1,4 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { SupabaseService } from '../common/supabase/supabase.service';
 import { CreateMomentDto } from './dto/create-moment.dto';
 import { ReorderMomentsDto } from './dto/reorder-moments.dto';
@@ -15,9 +20,17 @@ type MomentPhotoRow = {
 
 @Injectable()
 export class MomentsService {
+  private readonly logger = new Logger(MomentsService.name);
+  private readonly allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic']);
+  private readonly maxFileSizeBytes = 10 * 1024 * 1024;
+
   constructor(private supabaseService: SupabaseService) {}
 
   async findByDate(userId: string, date: string) {
+    if (!date) {
+      throw new BadRequestException({ error: 'date is required' });
+    }
+
     const supabase = this.supabaseService.getClient();
     const { data: moments, error } = await supabase
       .from('moments')
@@ -35,6 +48,12 @@ export class MomentsService {
   }
 
   async create(userId: string, dto: CreateMomentDto, files: Express.Multer.File[] = []) {
+    if (files.length === 0) {
+      throw new BadRequestException({ error: 'At least one photo is required' });
+    }
+
+    this.validateFiles(files);
+
     const supabase = this.supabaseService.getClient();
     const dayDate = dto.day_date || format(new Date(), 'yyyy-MM-dd');
 
@@ -60,8 +79,13 @@ export class MomentsService {
 
     if (error) throw error;
 
-    const photos = await this.persistMomentPhotos(userId, dayDate, moment.id, files);
-    return { ...moment, photos };
+    try {
+      const photos = await this.persistMomentPhotos(userId, dayDate, moment.id, files);
+      return { ...moment, photos };
+    } catch (error) {
+      await supabase.from('moments').delete().eq('id', moment.id).eq('user_id', userId);
+      throw error;
+    }
   }
 
   async remove(userId: string, momentId: string) {
@@ -74,10 +98,16 @@ export class MomentsService {
 
     const storagePaths = (photos ?? [])
       .map((photo) => photo.storage_path)
-      .filter((storagePath) => storagePath && !storagePath.startsWith('inline/'));
+      .filter((storagePath) => Boolean(storagePath));
 
     if (storagePaths.length > 0) {
-      await supabase.storage.from('moment-photos').remove(storagePaths);
+      const { error: storageError } = await supabase.storage.from('moment-photos').remove(storagePaths);
+      if (storageError) {
+        this.logger.error(
+          `Failed to delete storage photos for user ${userId}, moment ${momentId}: ${storageError.message}`,
+        );
+        throw new InternalServerErrorException({ error: 'Photo delete failed' });
+      }
     }
 
     const { error } = await supabase
@@ -91,13 +121,15 @@ export class MomentsService {
 
   async reorder(userId: string, dto: ReorderMomentsDto) {
     const supabase = this.supabaseService.getClient();
+    const timestamp = new Date().toISOString();
 
     for (let index = 0; index < dto.order.length; index += 1) {
       const { error } = await supabase
         .from('moments')
-        .update({ order_index: index })
+        .update({ order_index: index, updated_at: timestamp })
         .eq('id', dto.order[index])
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .eq('day_date', dto.date);
 
       if (error) throw error;
     }
@@ -115,14 +147,11 @@ export class MomentsService {
 
     const supabase = this.supabaseService.getClient();
     const photoRows: Array<Omit<MomentPhotoRow, 'id' | 'created_at'>> = [];
+    const uploadedStoragePaths: string[] = [];
 
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index];
-      const filename = `${String(index + 1).padStart(3, '0')}-${(file.originalname || 'photo').replace(/\s+/g, '-')}`;
-      const storagePath = `${userId}/${dayDate}/${momentId}/${filename}`;
-
-      let persistedPath = `inline/${storagePath}`;
-      let photoUrl = this.buildInlinePhotoUrl(file);
+      const storagePath = `${userId}/${dayDate}/${momentId}/${index}.jpg`;
 
       try {
         const { error: uploadError } = await supabase.storage
@@ -132,26 +161,36 @@ export class MomentsService {
             upsert: false,
           });
 
-        if (!uploadError) {
-          const signed = await supabase.storage
-            .from('moment-photos')
-            .createSignedUrl(storagePath, 60 * 60 * 24 * 30);
-
-          if (!signed.error && signed.data?.signedUrl) {
-            persistedPath = storagePath;
-            photoUrl = signed.data.signedUrl;
-          }
+        if (uploadError) {
+          throw uploadError;
         }
-      } catch {
-        // Fall back to inline image URLs so the frontend remains testable without storage setup.
-      }
 
-      photoRows.push({
-        moment_id: momentId,
-        storage_path: persistedPath,
-        photo_url: photoUrl,
-        order_index: index,
-      });
+        uploadedStoragePaths.push(storagePath);
+
+        const signed = await supabase.storage
+          .from('moment-photos')
+          .createSignedUrl(storagePath, 60 * 60 * 24 * 30);
+
+        if (signed.error || !signed.data?.signedUrl) {
+          throw signed.error ?? new Error('Failed to create photo URL');
+        }
+
+        photoRows.push({
+          moment_id: momentId,
+          storage_path: storagePath,
+          photo_url: signed.data.signedUrl,
+          order_index: index,
+        });
+      } catch (error) {
+        if (uploadedStoragePaths.length > 0) {
+          await supabase.storage.from('moment-photos').remove(uploadedStoragePaths);
+        }
+
+        this.logger.error(
+          `Photo upload failed for user ${userId}, moment ${momentId}: ${error instanceof Error ? error.message : 'unknown error'}`,
+        );
+        throw new InternalServerErrorException({ error: 'Photo upload failed' });
+      }
     }
 
     const { data, error } = await supabase
@@ -159,12 +198,23 @@ export class MomentsService {
       .insert(photoRows)
       .select('*');
 
-    if (error) throw error;
+    if (error) {
+      await supabase.storage.from('moment-photos').remove(uploadedStoragePaths);
+      this.logger.error(`Failed to insert moment photo rows for moment ${momentId}: ${error.message}`);
+      throw error;
+    }
     return (data ?? []).sort((a, b) => a.order_index - b.order_index);
   }
 
-  private buildInlinePhotoUrl(file: Express.Multer.File): string {
-    const mimeType = file.mimetype || 'image/jpeg';
-    return `data:${mimeType};base64,${file.buffer.toString('base64')}`;
+  private validateFiles(files: Express.Multer.File[]) {
+    for (const file of files) {
+      if (!this.allowedMimeTypes.has(file.mimetype)) {
+        throw new BadRequestException({ error: 'Unsupported photo type' });
+      }
+
+      if (file.size > this.maxFileSizeBytes) {
+        throw new BadRequestException({ error: 'Photo exceeds 10MB limit' });
+      }
+    }
   }
 }

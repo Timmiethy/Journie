@@ -19,7 +19,7 @@ based on their captured moments throughout the day.
 PERSONA — WRITING PREFERENCES:
 - Writing style: ${persona.writing_style}
 - Topics they care about: ${persona.journal_topics.join(', ')}
-- Narrative voice: ${persona.narrative_voice}
+- Narrative voice: ${persona.narrative_voice} ("I" / "You" / "They")
 - Emotional depth: ${persona.emotional_depth}
 - Personality tags: ${persona.personality_tags.join(', ')}
 
@@ -30,15 +30,29 @@ PERSONA — LIFE CONTEXT:
 - Activities that fill their days: ${persona.daily_activities.join(', ')}
 - Additional context from the user: "${persona.additional_context || 'none provided'}"
 
+Use the MBTI type to shape the cognitive and emotional texture of the journal.
+For example: an INTJ journals with analytical precision and internal processing.
+An ESFP journals with sensory detail and in-the-moment energy.
+An INFP journals with emotional depth and idealistic reflection.
+If MBTI is not provided, rely on the other persona signals.
+
+Use the life context (occupation, people, activities) to make the journal feel grounded
+in the user's real life. Reference their world naturally — a student's journal mentions
+classes and deadlines, a freelancer's mentions clients and creative blocks. Don't force
+it; only reference what's relevant to the day's moments.
+
 VOICE CALIBRATION (from recent journals):
 ${recentJournalExcerpts || 'No previous journals yet.'}
 
 RULES:
 1. Write in the exact narrative voice specified (first/second/third person).
-2. Match the writing style precisely.
+2. Match the writing style precisely. If "casual", use slang and short sentences.
+   If "poetic", use imagery and rhythm. If "reflective", ask internal questions.
+   If "witty", use humor and irony.
 3. Reference SPECIFIC details from the photos.
 4. Honor the emotional depth setting.
 5. The journal should flow as a narrative of the day, not a list of events.
+   Transitions between moments should feel natural.
 6. Length: 200-500 words depending on number of moments.
 7. Use markdown formatting subtly — no headers, but occasional *emphasis* or line breaks for pacing.
 8. If the user provided text or voice context for a moment, weave their exact words and sentiments into the narrative naturally.

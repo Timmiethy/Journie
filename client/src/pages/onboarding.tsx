@@ -1,5 +1,6 @@
 import { useState, useCallback, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { AuraShell } from '../components/layout/AuraShell';
 import type {
@@ -25,15 +26,39 @@ const WRITING_SAMPLES: Record<WritingStyle, string> = {
   witty: 'Survived another Monday. Barely. The coffee deserves a medal.',
 };
 
-const STYLE_PREVIEWS: Record<WritingStyle, string> = {
-  poetic:
-    'The morning had that particular quality of light — golden and forgiving, the kind that makes even a Tuesday feel worthy of documentation...',
-  casual:
-    'Okay so today was actually pretty solid. Started with coffee (obviously) and somehow everything just clicked from there...',
-  reflective:
-    'I find myself returning to the same question lately. What does it mean to live a day well? Not productively — well...',
-  witty:
-    'Day N of pretending to have my life together. Verdict: still pending. The coffee was excellent though, and honestly that counts...',
+const STYLE_PREVIEWS: Record<WritingStyle, Record<NarrativeVoice, string>> = {
+  poetic: {
+    first_person:
+      'I moved through the day like it was stitched together by little glints of light, each moment leaving a trace I wanted to keep.',
+    second_person:
+      'You moved through the day like it was stitched together by little glints of light, each moment leaving a trace you wanted to keep.',
+    third_person:
+      'They moved through the day like it was stitched together by little glints of light, each moment leaving a trace they wanted to keep.',
+  },
+  casual: {
+    first_person:
+      'I had one of those days that only made sense once I looked back at it. Nothing huge, just a bunch of small things that somehow landed right.',
+    second_person:
+      'You had one of those days that only made sense once you looked back at it. Nothing huge, just a bunch of small things that somehow landed right.',
+    third_person:
+      'They had one of those days that only made sense once they looked back at it. Nothing huge, just a bunch of small things that somehow landed right.',
+  },
+  reflective: {
+    first_person:
+      'I kept circling the same thought all day: maybe meaning lives in the details I almost miss. The more I paid attention, the more the day opened up.',
+    second_person:
+      'You kept circling the same thought all day: maybe meaning lives in the details you almost miss. The more you paid attention, the more the day opened up.',
+    third_person:
+      'They kept circling the same thought all day: maybe meaning lives in the details they almost miss. The more they paid attention, the more the day opened up.',
+  },
+  witty: {
+    first_person:
+      'I spent the day pretending I had everything under control, which was brave of me. Somehow the chaos still turned into a story worth keeping.',
+    second_person:
+      'You spent the day pretending you had everything under control, which was brave of you. Somehow the chaos still turned into a story worth keeping.',
+    third_person:
+      'They spent the day pretending they had everything under control, which was brave of them. Somehow the chaos still turned into a story worth keeping.',
+  },
 };
 
 const ALL_MBTI: MBTIType[] = [
@@ -184,11 +209,25 @@ export function OnboardingPage() {
         additional_context: persona.additional_context,
       });
       navigate('/home', { replace: true });
-    } catch {
-      setError('something went wrong. try again.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'something went wrong. try again.';
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
+  }
+
+  function getPreviewText(): string {
+    const style = persona.writing_style ?? 'reflective';
+    const voice = persona.narrative_voice ?? 'first_person';
+    const base = STYLE_PREVIEWS[style][voice];
+
+    if (!persona.mbti) {
+      return base;
+    }
+
+    return `${base} It has that ${persona.mbti} kind of texture too: a voice shaped by how ${voice === 'first_person' ? 'I' : voice === 'second_person' ? 'you' : 'they'} naturally process the world.`;
   }
 
   // ─── Step renderers ───
@@ -439,9 +478,7 @@ export function OnboardingPage() {
         return (
           <StepShell question="this is how your journal will sound">
             <p className="font-serif text-base leading-relaxed text-film-900 italic max-w-[85%] mx-auto text-center py-8 border-y border-abyss-600">
-              {persona.writing_style
-                ? STYLE_PREVIEWS[persona.writing_style]
-                : STYLE_PREVIEWS.reflective}
+              {getPreviewText()}
             </p>
             {error && (
               <p className="font-sans text-sm text-aura-rough text-center mt-4">{error}</p>

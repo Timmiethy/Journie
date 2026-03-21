@@ -22,7 +22,8 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.has(origin)) {
+      // In development, allow all origins to support tools like Cloudflare Tunnels
+      if (!origin || allowedOrigins.has(origin) || process.env.NODE_ENV !== 'production') {
         callback(null, true);
         return;
       }
@@ -35,8 +36,9 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   const port = configService.get<number>('PORT', 3001);
-  await app.listen(port);
-  console.log(`Server running on http://localhost:${port}/api`);
+  const host = configService.get<string>('HOST', '127.0.0.1');
+  await app.listen(port, host);
+  console.log(`Server running on http://${host}:${port}/api`);
 }
 
 bootstrap();

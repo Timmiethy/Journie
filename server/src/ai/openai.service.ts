@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 
@@ -18,6 +18,14 @@ export class OpenaiService {
   }
 
   getClient(): OpenAI | null {
+    return this.client;
+  }
+
+  getClientOrThrow(): OpenAI {
+    if (!this.client) {
+      throw new InternalServerErrorException({ error: 'OpenAI is not configured' });
+    }
+
     return this.client;
   }
 }

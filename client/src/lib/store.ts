@@ -22,6 +22,8 @@ interface AppState {
   displayName: string | null;
   setUser: (id: string, name: string) => void;
   clearUser: () => void;
+  isOnline: boolean;
+  setOnlineStatus: (isOnline: boolean) => void;
   todayMoments: MomentWithPhotos[];
   setTodayMoments: (moments: MomentWithPhotos[]) => void;
   addMoment: (moment: MomentWithPhotos) => void;
@@ -34,7 +36,15 @@ export const useStore = create<AppState>((set) => ({
   userId: null,
   displayName: null,
   setUser: (id, name) => set({ userId: id, displayName: name }),
-  clearUser: () => set({ userId: null, displayName: null }),
+  clearUser: () =>
+    set({
+      userId: null,
+      displayName: null,
+      todayMoments: [],
+      currentAura: DEFAULT_AURA,
+    }),
+  isOnline: typeof navigator === 'undefined' ? true : navigator.onLine,
+  setOnlineStatus: (isOnline) => set({ isOnline }),
   todayMoments: [],
   setTodayMoments: (moments) =>
     set({

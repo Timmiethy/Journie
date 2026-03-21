@@ -14,6 +14,8 @@ import { AuthGuard } from '../common/guards/auth.guard';
 import { CurrentUser } from '../common/decorators/current-user';
 import { JournalService } from './journal.service';
 import { GenerationService } from './generation/generation.service';
+import { GenerateJournalDto } from './dto/generate-journal.dto';
+import { UpdateJournalDto } from './dto/update-journal.dto';
 
 @Controller('journal')
 @UseGuards(AuthGuard)
@@ -27,7 +29,7 @@ export class JournalController {
   @HttpCode(HttpStatus.ACCEPTED)
   async generate(
     @CurrentUser() user: { id: string },
-    @Body() body: { date: string; regenerate?: boolean },
+    @Body() body: GenerateJournalDto,
   ) {
     return this.generationService.generate(user.id, body.date, body.regenerate);
   }
@@ -44,7 +46,7 @@ export class JournalController {
   async update(
     @CurrentUser() user: { id: string },
     @Param('date') date: string,
-    @Body() body: { content?: string; status?: string },
+    @Body() body: UpdateJournalDto,
   ) {
     return this.journalService.update(user.id, date, body);
   }

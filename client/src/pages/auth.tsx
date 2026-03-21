@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../lib/store';
 import { api } from '../lib/api';
@@ -46,10 +47,18 @@ export function AuthPage() {
         user.user_metadata?.display_name ?? user.email ?? 'User'
       );
 
-      const persona = await api.persona.get();
-      navigate(persona ? '/home' : '/onboarding', { replace: true });
+      try {
+        const persona = await api.persona.get();
+        navigate(persona ? '/home' : '/onboarding', { replace: true });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'something went wrong. try again.';
+        setError(message);
+        toast.error(message);
+      }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'something went wrong. try again.');
+      const message = err instanceof Error ? err.message : 'something went wrong. try again.';
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -64,7 +73,7 @@ export function AuthPage() {
             journie
           </h1>
           <p className="font-sans text-sm text-film-700 tracking-[0.15em] uppercase text-center mb-12">
-            your day, written for you
+            your day, your journal, zero writing.
           </p>
 
           {/* Divider */}
@@ -128,4 +137,3 @@ export function AuthPage() {
     </AuraShell>
   );
 }
-

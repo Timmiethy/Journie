@@ -10,6 +10,8 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFiles,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '../common/guards/auth.guard';
@@ -42,6 +44,7 @@ export class MomentsController {
   }
 
   @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
     @CurrentUser() user: { id: string },
     @Param('id') id: string,

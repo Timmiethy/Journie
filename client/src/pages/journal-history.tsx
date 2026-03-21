@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   format,
   startOfMonth,
@@ -13,16 +14,13 @@ import {
   isSameMonth,
   isToday,
 } from 'date-fns';
-import { api } from '../lib/api';
-import { useStore } from '../lib/store';
+import { api, type JournalListEntry } from '../lib/api';
 import { AuraShell } from '../components/layout/AuraShell';
-import type { JournalEntry } from '../types';
 
 export function JournalHistoryPage() {
   const navigate = useNavigate();
-  const currentAura = useStore((s) => s.currentAura);
 
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const [entries, setEntries] = useState<JournalListEntry[]>([]);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [loaded, setLoaded] = useState(false);
 
@@ -33,7 +31,10 @@ export function JournalHistoryPage() {
         setEntries(res);
         setLoaded(true);
       })
-      .catch(() => setLoaded(true));
+      .catch((err: unknown) => {
+        toast.error(err instanceof Error ? err.message : 'failed to load journals');
+        setLoaded(true);
+      });
   }, []);
 
   // Dates that have journals
@@ -130,7 +131,7 @@ export function JournalHistoryPage() {
                   {hasJournal && (
                     <div
                       className="h-1 w-1 rounded-full absolute bottom-1"
-                      style={{ backgroundColor: currentAura }}
+                      style={{ backgroundColor: '#FF8A4C' }}
                     />
                   )}
                 </button>
@@ -147,10 +148,7 @@ export function JournalHistoryPage() {
 
           {loaded && entries.length === 0 ? (
             <div className="py-16 text-center">
-              <p className="font-serif italic text-film-700 text-base">no entries yet.</p>
-              <p className="font-sans text-xs text-film-500 mt-2">
-                capture a moment to begin
-              </p>
+              <p className="font-serif italic text-film-700 text-base">No journals yet. Start capturing moments!</p>
             </div>
           ) : (
             entries.map((entry) => (
@@ -171,7 +169,7 @@ function EntryCard({
   entry,
   onClick,
 }: {
-  entry: JournalEntry;
+  entry: JournalListEntry;
   onClick: () => void;
 }) {
   const dateLabel = format(new Date(entry.day_date + 'T12:00:00'), 'MMMM d');
@@ -183,7 +181,15 @@ function EntryCard({
       onClick={onClick}
       className="flex items-center gap-4 px-6 py-4 border-b border-abyss-700 cursor-pointer active:opacity-70 transition-opacity w-full text-left"
     >
-      <div className="h-14 w-14 bg-abyss-700 flex-shrink-0" />
+      {entry.first_photo_url ? (
+        <img
+          src={entry.first_photo_url}
+          alt=""
+          className="h-14 w-14 object-cover flex-shrink-0"
+        />
+      ) : (
+        <div className="h-14 w-14 bg-abyss-700 flex-shrink-0" />
+      )}
       <div className="flex-1 min-w-0">
         <p className="font-sans text-xs text-film-500 mb-1">{dateLabel}</p>
         <p className="font-serif text-sm text-film-700 line-clamp-2">{firstLine}</p>
@@ -191,4 +197,3 @@ function EntryCard({
     </button>
   );
 }
-

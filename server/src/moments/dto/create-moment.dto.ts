@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsIn } from 'class-validator';
+import { IsIn, IsISO8601, IsOptional, IsString, Matches } from 'class-validator';
 
 export class CreateMomentDto {
   @IsOptional()
@@ -14,10 +14,11 @@ export class CreateMomentDto {
   mood?: string;
 
   @IsOptional()
-  @IsString()
+  @IsISO8601()
   captured_at?: string;
 
   @IsOptional()
   @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
   day_date?: string;
 }

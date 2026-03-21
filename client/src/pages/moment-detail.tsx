@@ -27,6 +27,8 @@ export function MomentDetailPage() {
   const [text, setText] = useState('');
   const [transcript, setTranscript] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadFailed, setUploadFailed] = useState(false);
+  const isOnline = useStore((s) => s.isOnline);
 
   // Voice recording state
   const [recording, setRecording] = useState(false);
@@ -93,8 +95,8 @@ export function MomentDetailPage() {
           const transcriptText = result.transcript;
           setTranscript(transcriptText);
           setText((prev) => (prev ? `${prev} ${transcriptText}` : transcriptText));
-        } catch {
-          toast.error("couldn't transcribe audio");
+        } catch (err: unknown) {
+          toast.error(err instanceof Error ? err.message : "couldn't transcribe audio");
         }
       };
 
@@ -117,7 +119,10 @@ export function MomentDetailPage() {
   // ─── Save ───
 
   const handleSave = async () => {
+    if (!isOnline) return;
+
     setSaving(true);
+    setUploadFailed(false);
     try {
       const compressed = await Promise.all(files.map(compressImage));
       const form = new FormData();
@@ -131,8 +136,9 @@ export function MomentDetailPage() {
       const result = await api.moments.create(form);
       useStore.getState().addMoment(result);
       navigate('/home', { replace: true });
-    } catch {
-      toast.error("couldn't save moment — try again");
+    } catch (err: unknown) {
+      setUploadFailed(true);
+      toast.error(err instanceof Error ? err.message : "couldn't save moment — try again");
     } finally {
       setSaving(false);
     }
@@ -154,6 +160,7 @@ export function MomentDetailPage() {
       return (
         <div className="relative">
           <img src={previews[0]} alt="" className="w-full aspect-[4/3] object-cover rounded-none" />
+          {uploadFailed && <UploadRetryOverlay />}
           <RemoveBtn onClick={() => removeFile(0)} />
         </div>
       );
@@ -165,6 +172,7 @@ export function MomentDetailPage() {
           {previews.map((p, i) => (
             <div key={i} className="relative">
               <img src={p} alt="" className="aspect-square object-cover w-full rounded-none" />
+              {uploadFailed && <UploadRetryOverlay />}
               <RemoveBtn onClick={() => removeFile(i)} />
             </div>
           ))}
@@ -177,12 +185,14 @@ export function MomentDetailPage() {
         <div className="space-y-1">
           <div className="relative">
             <img src={previews[0]} alt="" className="w-full aspect-[16/9] object-cover rounded-none" />
+            {uploadFailed && <UploadRetryOverlay />}
             <RemoveBtn onClick={() => removeFile(0)} />
           </div>
           <div className="grid grid-cols-2 gap-1">
             {previews.slice(1).map((p, i) => (
               <div key={i + 1} className="relative">
                 <img src={p} alt="" className="aspect-square object-cover w-full rounded-none" />
+                {uploadFailed && <UploadRetryOverlay />}
                 <RemoveBtn onClick={() => removeFile(i + 1)} />
               </div>
             ))}
@@ -197,6 +207,7 @@ export function MomentDetailPage() {
         {previews.map((p, i) => (
           <div key={i} className="relative">
             <img src={p} alt="" className="aspect-square object-cover w-full rounded-none" />
+            {uploadFailed && <UploadRetryOverlay />}
             <RemoveBtn onClick={() => removeFile(i)} />
           </div>
         ))}
@@ -325,7 +336,7 @@ export function MomentDetailPage() {
             {/* Save button */}
             <div className="px-6 mt-8">
               <button
-                disabled={saving}
+                disabled={saving || !isOnline}
                 onClick={handleSave}
                 className="w-full bg-film-900 text-abyss-900 font-sans font-bold text-sm uppercase tracking-widest py-4 rounded-none hover:bg-film-700 active:scale-[0.98] transition-all duration-200 disabled:bg-abyss-700 disabled:text-film-500 disabled:cursor-not-allowed"
               >
@@ -356,5 +367,14 @@ function RemoveBtn({ onClick }: { onClick: () => void }) {
   );
 }
 
+function UploadRetryOverlay() {
+  return (
+    <div className="absolute inset-0 bg-abyss-900/65 flex items-center justify-center px-3 text-center">
+      <span className="font-sans text-[10px] uppercase tracking-wider text-film-900">
+        upload failed, tap save to retry
+      </span>
+    </div>
+  );
+}
 
 

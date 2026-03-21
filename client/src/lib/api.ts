@@ -1,7 +1,9 @@
 import type { JournalEntry, Persona, MomentWithPhotos } from '../types';
 import { supabase } from './supabase';
+import { useStore } from './store';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const REQUEST_TIMEOUT_MS = 30000;
 
 type JournalUpdate = {
   content?: string;
@@ -17,6 +19,10 @@ type JournalListParams = {
 type GenerateJournalResponse = {
   journal_id?: string;
   status: string;
+};
+
+export type JournalListEntry = JournalEntry & {
+  first_photo_url?: string | null;
 };
 
 type TranscriptionResponse = {
@@ -38,7 +44,9 @@ async function request<T>(
   isMultipart = false,
 ): Promise<T> {
   const headers = await getAuthHeader();
-  const config: RequestInit = { method, headers };
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const config: RequestInit = { method, headers, signal: controller.signal };
 
   if (body !== undefined) {
     if (isMultipart) {
@@ -49,10 +57,22 @@ async function request<T>(
     }
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, config);
+  let res: Response;
+
+  try {
+    res = await fetch(`${BASE_URL}${path}`, config);
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Something went wrong.');
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 
   if (res.status === 401) {
     await supabase.auth.signOut();
+    useStore.getState().clearUser();
     window.location.href = '/auth';
     throw new Error('Session expired');
   }
@@ -107,7 +127,7 @@ export const api = {
       if (params?.status) {
         qs.set('status', params.status);
       }
-      return request<JournalEntry[]>('GET', `/journals${qs.size ? `?${qs.toString()}` : ''}`);
+      return request<JournalListEntry[]>('GET', `/journals${qs.size ? `?${qs.toString()}` : ''}`);
     },
   },
 };

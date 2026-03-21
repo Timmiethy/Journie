@@ -9,7 +9,6 @@ import { OnboardingPage }      from './pages/onboarding';
 import { HomePage }            from './pages/home';
 import { MomentDetailPage }    from './pages/moment-detail';
 import { TimelinePage }        from './pages/timeline';
-import { JournalGeneratePage } from './pages/journal-generate';
 import { JournalViewPage }     from './pages/journal-view';
 import { JournalHistoryPage }  from './pages/journal-history';
 
@@ -37,6 +36,24 @@ function ProtectedRoute() {
 }
 
 export default function App() {
+  const isOnline = useStore((s) => s.isOnline);
+
+  useEffect(() => {
+    const { setOnlineStatus } = useStore.getState();
+
+    const handleOnline = () => setOnlineStatus(true);
+    const handleOffline = () => setOnlineStatus(false);
+
+    setOnlineStatus(navigator.onLine);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   return (
     <BrowserRouter>
       <Toaster
@@ -53,6 +70,11 @@ export default function App() {
           unstyled: false,
         }}
       />
+      {!isOnline && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-aura-rough text-film-900 font-sans text-xs uppercase tracking-[0.2em] text-center py-3">
+          You're offline
+        </div>
+      )}
       <Routes>
         <Route path="/auth" element={<AuthPage />} />
 
@@ -61,7 +83,6 @@ export default function App() {
           <Route path="/home" element={<HomePage />} />
           <Route path="/moments/new" element={<MomentDetailPage />} />
           <Route path="/timeline" element={<TimelinePage />} />
-          <Route path="/journal/:date/generate" element={<JournalGeneratePage />} />
           <Route path="/journal/:date" element={<JournalViewPage />} />
           <Route path="/journals" element={<JournalHistoryPage />} />
         </Route>
