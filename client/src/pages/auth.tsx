@@ -60,13 +60,24 @@ export function AuthPage() {
     <AuraShell>
       <div className="flex min-h-screen items-center justify-center px-5 py-10">
         <div className="w-full rounded-[28px] border border-abyss-700/80 bg-abyss-900/85 px-6 py-8 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-sm">
-          {/* Brand */}
-          <h1 className="mb-2 text-center font-sans text-[2.4rem] font-semibold tracking-[0.04em] text-film-900">
-            journie
-          </h1>
-          <p className="font-sans text-sm text-film-700 tracking-[0.15em] uppercase text-center mb-10">
-            your day, your journal, zero writing.
-          </p>
+          <div className="mb-10 flex flex-col items-center text-center">
+            <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full border border-white/10 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.12),rgba(255,255,255,0.02)_68%)] shadow-[0_20px_45px_rgba(0,0,0,0.34)] backdrop-blur-xl">
+              <img
+                src="/favicon.svg"
+                alt="Journie logo"
+                className="h-12 w-12"
+              />
+            </div>
+            <p className="mb-2 font-sans text-[10px] uppercase tracking-[0.32em] text-film-600">
+              personal journal companion
+            </p>
+            <h1 className="mb-3 text-center font-sans text-[2.4rem] font-semibold tracking-[0.04em] text-film-900">
+              journie
+            </h1>
+            <p className="max-w-[22rem] font-sans text-sm uppercase tracking-[0.15em] text-film-700">
+              your day, your journal, zero writing.
+            </p>
+          </div>
 
           {/* Divider */}
           <div className="w-12 h-px bg-abyss-600 mx-auto mb-10" />
